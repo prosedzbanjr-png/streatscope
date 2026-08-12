@@ -14,7 +14,7 @@ const fallbackStories: Story[] = [
 export function PublishedStories() {
   const [stories, setStories] = useState<Story[]>(fallbackStories);
   useEffect(() => {
-    getSupabase().from("articles").select("id,title,category,excerpt,image_url").eq("status", "published").order("published_at", { ascending: false }).limit(3).then(({ data }) => {
+    getSupabase().from("articles").select("id,title,category,excerpt,image_url,pinned,published_at").eq("status", "published").order("pinned", { ascending: false }).order("published_at", { ascending: false }).limit(3).then(({ data }) => {
       const items = data ?? [];
       if (!items.length) return;
       setStories(items.map((item, index) => ({ id: item.id, tag: item.category, title: item.title, excerpt: item.excerpt, image: item.image_url || ["/images/hero.png", "/images/hq.png", "/images/mural.png"][index % 3], large: index === 0 })));
