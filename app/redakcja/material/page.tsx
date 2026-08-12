@@ -42,6 +42,20 @@ export default function MaterialPage() {
     root.addEventListener("click", onCanvasClick);
     return () => root.removeEventListener("click", onCanvasClick);
   }, [loaded]);
+  useEffect(() => {
+    const root = canvas.current; if (!root) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") return;
+      const active = document.activeElement as HTMLElement | null;
+      const field = active?.closest(".free-text") as HTMLElement | null;
+      if (!field || !root.contains(field)) return;
+      event.preventDefault(); event.stopPropagation();
+      const range = document.createRange(); range.selectNodeContents(field);
+      const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+    };
+    root.addEventListener("keydown", onKeyDown);
+    return () => root.removeEventListener("keydown", onKeyDown);
+  }, [loaded]);
   useEffect(() => { if (!allowed || !loaded) return; const timer = window.setTimeout(() => { const content = { title, excerpt, category, body, socialTitle, socialDescription, socialImage, savedAt: new Date().toISOString() }; if (title || excerpt || body) { localStorage.setItem(draftKey, JSON.stringify(content)); setMessage("Szkic zapisany automatycznie."); } }, 900); return () => window.clearTimeout(timer); }, [title, excerpt, category, body, socialTitle, socialDescription, socialImage, allowed, loaded]);
   useEffect(() => { if (!allowed || !loaded || isEditing) return; const raw = localStorage.getItem(draftKey); if (!raw) return; try { const saved = JSON.parse(raw); if ((saved.title || saved.body) && window.confirm("Przywrócić automatycznie zapisany szkic?")) { setTitle(saved.title || ""); setExcerpt(saved.excerpt || ""); setCategory(saved.category || "AKTUALNOŚCI"); setBody(saved.body || ""); setSocialTitle(saved.socialTitle || ""); setSocialDescription(saved.socialDescription || ""); setSocialImage(saved.socialImage || ""); } } catch {} }, [allowed, loaded]);
 
