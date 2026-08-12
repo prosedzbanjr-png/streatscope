@@ -30,10 +30,11 @@ export default function MaterialPage() {
     if (!toolbar || toolbar.querySelector("[data-text-styles]")) return;
     const wrap = document.createElement("div"); wrap.className = "text-style-controls"; wrap.dataset.textStyles = "true"; wrap.contentEditable = "false";
     const font = document.createElement("select"); font.className = "editor-select"; font.setAttribute("aria-label", "Czcionka"); font.innerHTML = '<option value="">CZCIONKA</option><option value="Arial">ARIAL</option><option value="Georgia">GEORGIA</option><option value="Courier New">MONO</option><option value="Barlow Condensed">BARLOW</option>';
-    const size = document.createElement("select"); size.className = "editor-select"; size.setAttribute("aria-label", "Rozmiar czcionki"); size.innerHTML = '<option value="">ROZMIAR</option><option value="2">MAŁY</option><option value="3">NORMALNY</option><option value="4">DUŻY</option><option value="5">BARDZO DUŻY</option><option value="6">TYTUŁ</option>';
+    const size = document.createElement("input"); size.type = "range"; size.className = "editor-pixel-size"; size.min = "1"; size.max = "100"; size.value = "22"; size.setAttribute("aria-label", "Rozmiar czcionki od 1 do 100 pikseli");
+    const sizeValue = document.createElement("output"); sizeValue.className = "editor-pixel-value"; sizeValue.textContent = "22 PX";
     const colorLabel = document.createElement("label"); colorLabel.className = "editor-color"; colorLabel.textContent = "KOLOR"; const color = document.createElement("input"); color.type = "color"; color.value = "#111111"; color.setAttribute("aria-label", "Kolor zaznaczonego tekstu"); colorLabel.append(color);
-    font.addEventListener("change", () => { if (font.value) command("fontName", font.value); }); size.addEventListener("change", () => { if (size.value) command("fontSize", size.value); }); color.addEventListener("change", () => command("foreColor", color.value));
-    wrap.append(font, size, colorLabel); toolbar.append(wrap);
+    font.addEventListener("change", () => { if (font.value) command("fontName", font.value); }); size.addEventListener("input", () => { sizeValue.textContent = `${size.value} PX`; setTextPixelSize(Number(size.value)); }); color.addEventListener("change", () => command("foreColor", color.value));
+    wrap.append(font, size, sizeValue, colorLabel); toolbar.append(wrap);
   }, [allowed, loaded]);
   useEffect(() => {
     const root = canvas.current; if (!root) return;
@@ -66,6 +67,11 @@ export default function MaterialPage() {
   function command(name: string, value?: string) { canvas.current?.focus(); restoreCaret(); document.execCommand(name, false, value); saveCaret(); syncBody(); }
   function setFont(font: string) { if (font !== "default") command("fontName", font); }
   function setFontSize(size: string) { if (size !== "default") command("fontSize", size); }
+  function setTextPixelSize(size: number) {
+    const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const span = document.createElement("span"); span.style.fontSize = `${Math.max(1, Math.min(100, size))}px`;
+    if (range.collapsed) { span.append(document.createTextNode("\u200b")); range.insertNode(span); const cursor = document.createRange(); cursor.setStart(span.firstChild!, 1); cursor.collapse(true); selection.removeAllRanges(); selection.addRange(cursor); } else { try { range.surroundContents(span); } catch { const fragment = range.extractContents(); span.append(fragment); range.insertNode(span); } }
+    saveCaret(); syncBody();
+  }
   function setTextColor(color: string) { command("foreColor", color); }
   function addLink() { const link = window.prompt("Wklej adres linku:"); if (link) command("createLink", link); }
   function youtubeEmbedUrl(url: string) { try { const parsed = new URL(url); const id = parsed.hostname.includes("youtu.be") ? parsed.pathname.slice(1) : parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).pop(); return id ? `https://www.youtube-nocookie.com/embed/${id.replace(/[^a-zA-Z0-9_-]/g, "")}` : null; } catch { return null; } }
@@ -79,13 +85,9 @@ export default function MaterialPage() {
   function clearMediaSelection(event: React.PointerEvent<HTMLDivElement>) { const target = event.target as HTMLElement; if (target.closest("figure.inline-media")) return; canvas.current?.querySelectorAll("figure.inline-media.is-selected").forEach(item => item.classList.remove("is-selected")); setSelectedMedia(null); }
   function createParagraphAtClick(event: MouseEvent<HTMLDivElement>) {
     const root = canvas.current; const target = event.target as HTMLElement;
-    if (!root || target.closest("figure.inline-media,figure.inline-video,figcaption,p,h2,h3,blockquote,li,a")) return;
-    const point = document.caretPositionFromPoint?.(event.clientX, event.clientY);
-    const legacy = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(event.clientX, event.clientY);
-    const range = legacy ?? (() => { if (!point) return null; const next = document.createRange(); next.setStart(point.offsetNode, point.offset); next.collapse(true); return next; })();
-    const paragraph = document.createElement("p"); paragraph.append(document.createElement("br"));
-    if (range && root.contains(range.startContainer)) { range.insertNode(paragraph); } else { root.append(paragraph); }
-    const cursor = document.createRange(); cursor.setStart(paragraph, 0); cursor.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(cursor); root.focus(); saveCaret(); syncBody();
+    if (!root || target.closest("figure.inline-media,figure.inline-video,figcaption,p,h2,h3,blockquote,li,a,.free-text")) return;
+    const box = root.getBoundingClientRect(); const text = document.createElement("div"); text.className = "free-text"; text.contentEditable = "true"; text.dataset.placeholder = "Kliknij i pisz…"; text.style.left = `${Math.max(10, Math.min(box.width - 230, event.clientX - box.left))}px`; text.style.top = `${Math.max(12, event.clientY - box.top)}px`; text.append(document.createElement("br")); root.append(text);
+    const cursor = document.createRange(); cursor.setStart(text, 0); cursor.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(cursor); text.focus(); saveCaret(); syncBody();
   }
   function dragStart(event: React.DragEvent<HTMLDivElement>) { event.preventDefault(); }
   function dragEnd() { canvas.current?.querySelectorAll(".is-dragging,.drop-before,.drop-after").forEach(node => node.classList.remove("is-dragging", "drop-before", "drop-after")); draggedMedia.current = null; }
