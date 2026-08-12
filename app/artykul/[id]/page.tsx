@@ -9,7 +9,7 @@ type Article = { id: number; title: string; category: string; excerpt: string; b
 export default function ArticlePage({ params }: { params: Promise<{ id: string }> }) {
   const [article, setArticle] = useState<Article | null>(null);
   const [missing, setMissing] = useState(false);
-  useEffect(() => { params.then(({ id }) => getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at").eq("id", Number(id)).eq("status", "published").single().then(({ data }) => { if (data) setArticle(data as Article); else setMissing(true); })); }, [params]);
+  useEffect(() => { params.then(({ id }) => getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at").eq("id", Number(id)).eq("status", "published").lte("published_at", new Date().toISOString()).single().then(({ data }) => { if (data) setArticle(data as Article); else setMissing(true); })); }, [params]);
   if (missing) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><h1>TEGO MATERIAŁU<br />TU <em>NIE MA.</em></h1><a href="/" className="red-button">← WRÓĆ DO WIADOMOŚCI</a></main>;
   if (!article) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p className="kicker"><i /> ŁADOWANIE MATERIAŁU</p></main>;
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "long", year: "numeric" }) : "DZISIAJ";

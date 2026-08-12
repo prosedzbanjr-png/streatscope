@@ -7,8 +7,8 @@ import "./editor.css";
 const EDITOR_EMAIL = "kujalowicze@gmail.com";
 type Article = { id: number; title: string; category: string; excerpt: string; body: string | null; image_url: string | null; gallery: string[] | null; status: "draft" | "published"; created_at: string; published_at: string | null; pinned?: boolean };
 type Tip = { id: number; title: string; district: string; description: string; contact: string | null; status: "new" | "reviewing" | "used" | "archived"; created_at: string };
-type ArticleForm = { title: string; category: string; excerpt: string; body: string; imageUrl: string; gallery: string };
-const emptyForm: ArticleForm = { title: "", category: "AKTUALNOŚCI", excerpt: "", body: "", imageUrl: "", gallery: "" };
+type ArticleForm = { title: string; category: string; excerpt: string; body: string; imageUrl: string; gallery: string; publishAt: string };
+const emptyForm: ArticleForm = { title: "", category: "AKTUALNOŚCI", excerpt: "", body: "", imageUrl: "", gallery: "", publishAt: "" };
 
 export default function RedakcjaPage() {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [signedIn, setSignedIn] = useState(false);
@@ -28,7 +28,7 @@ export default function RedakcjaPage() {
   useEffect(() => { client().auth.getUser().then(({ data }) => { if (data.user?.email?.toLowerCase() === EDITOR_EMAIL) { setSignedIn(true); loadData(); } }); }, []);
   async function signIn(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setMessage(""); const { data, error } = await client().auth.signInWithPassword({ email, password }); if (error) setMessage("Nieprawidłowy e-mail lub hasło."); else if (data.user?.email?.toLowerCase() !== EDITOR_EMAIL) setMessage("To konto nie ma uprawnień naczelnego."); else { setSignedIn(true); setPassword(""); await loadData(); } setBusy(false); }
   const updateForm = (key: keyof ArticleForm, value: string) => setForm(current => ({ ...current, [key]: value }));
-  function beginEdit(article: Article) { setEditing(article); setTab("articles"); setForm({ title: article.title, category: article.category, excerpt: article.excerpt, body: article.body ?? "", imageUrl: article.image_url ?? "", gallery: Array.isArray(article.gallery) ? article.gallery.join("\n") : "" }); setCoverFile(null); setGalleryFiles([]); setMessage(`Edytujesz: ${article.title}`); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  function beginEdit(article: Article) { setEditing(article); setTab("articles"); setForm({ title: article.title, category: article.category, excerpt: article.excerpt, body: article.body ?? "", imageUrl: article.image_url ?? "", gallery: Array.isArray(article.gallery) ? article.gallery.join("\n") : "", publishAt: article.published_at ? article.published_at.slice(0, 16) : "" }); setCoverFile(null); setGalleryFiles([]); setMessage(`Edytujesz: ${article.title}`); window.scrollTo({ top: 0, behavior: "smooth" }); }
   function cancelEdit() { setEditing(null); setForm(emptyForm); setCoverFile(null); setGalleryFiles([]); setMessage(""); }
   function selectCover(event: ChangeEvent<HTMLInputElement>) { setCoverFile(event.target.files?.[0] ?? null); }
   function selectGallery(event: ChangeEvent<HTMLInputElement>) { setGalleryFiles(Array.from(event.target.files ?? []).slice(0, 8)); }
@@ -38,15 +38,19 @@ export default function RedakcjaPage() {
     setBusy(true); setMessage(""); const now = new Date().toISOString();
     try {
       const uploadedCover = coverFile ? await uploadImage(coverFile) : ""; const uploadedGallery = await Promise.all(galleryFiles.map(uploadImage)); const manualGallery = form.gallery.split(/\n|,/).map(url => url.trim()).filter(Boolean);
-      const payload = { title: form.title.trim(), category: form.category, excerpt: form.excerpt.trim(), body: form.body.trim(), image_url: uploadedCover || form.imageUrl.trim() || null, gallery: [...uploadedGallery, ...manualGallery], status, author_email: EDITOR_EMAIL, published_at: status === "published" ? (editing?.published_at ?? now) : null, updated_at: now };
+      const scheduleInput = status === "published" ? window.prompt("Data publikacji (opcjonalnie). Zostaw puste, aby opublikować teraz.\nFormat: RRRR-MM-DD GG:MM", "") : null;
+      const scheduledDate = scheduleInput?.trim() ? new Date(scheduleInput.trim().replace(" ", "T")) : null;
+      if (scheduledDate && Number.isNaN(scheduledDate.getTime())) { setMessage("Nieprawidłowy termin. Użyj formatu RRRR-MM-DD GG:MM."); return; }
+      const publicationDate = scheduledDate?.toISOString() ?? (editing?.published_at ?? now);
+      const payload = { title: form.title.trim(), category: form.category, excerpt: form.excerpt.trim(), body: form.body.trim(), image_url: uploadedCover || form.imageUrl.trim() || null, gallery: [...uploadedGallery, ...manualGallery], status, author_email: EDITOR_EMAIL, published_at: status === "published" ? publicationDate : null, updated_at: now };
       const result = editing ? await client().from("articles").update(payload).eq("id", editing.id) : await client().from("articles").insert(payload);
-      if (result.error) throw result.error; cancelEdit(); setMessage(status === "published" ? "Materiał opublikowany." : "Szkic zapisany."); await loadData();
+      if (result.error) throw result.error; const isScheduled = status === "published" && publicationDate > now; cancelEdit(); setMessage(status === "published" ? (isScheduled ? "Materiał zaplanowany." : "Materiał opublikowany.") : "Szkic zapisany."); await loadData();
     } catch { setMessage("Nie udało się dodać zdjęć lub zapisać materiału. Sprawdź bucket i zasady Storage w Supabase."); } finally { setBusy(false); }
   }
   async function removeArticle(article: Article) { if (!confirm(`Usunąć materiał „${article.title}”?`)) return; setBusy(true); const { error } = await client().from("articles").delete().eq("id", article.id); setMessage(error ? "Nie udało się usunąć materiału." : "Materiał usunięty."); await loadData(); setBusy(false); }
   async function togglePin(article: Article) { setBusy(true); if (!article.pinned) await client().from("articles").update({ pinned: false }).eq("pinned", true); const { error } = await client().from("articles").update({ pinned: !article.pinned }).eq("id", article.id); setMessage(error ? "Nie udało się zmienić przypięcia." : article.pinned ? "Materiał odpięty." : "Materiał przypięty."); await loadData(); setBusy(false); }
   async function updateTip(tip: Tip, status: Tip["status"]) { setBusy(true); const { error } = await client().from("tips").update({ status }).eq("id", tip.id); setMessage(error ? "Nie udało się zmienić statusu zgłoszenia." : "Status zgłoszenia zmieniony."); await loadData(); setBusy(false); }
-  function makeArticleFromTip(tip: Tip) { setTab("articles"); setEditing(null); setForm({ title: tip.title, category: "AKTUALNOŚCI", excerpt: tip.description.slice(0, 300), body: `${tip.description}\n\nŹródło: zgłoszenie czytelnika z rejonu ${tip.district}.`, imageUrl: "", gallery: "" }); updateTip(tip, "used"); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  function makeArticleFromTip(tip: Tip) { setTab("articles"); setEditing(null); setForm({ title: tip.title, category: "AKTUALNOŚCI", excerpt: tip.description.slice(0, 300), body: `${tip.description}\n\nŹródło: zgłoszenie czytelnika z rejonu ${tip.district}.`, imageUrl: "", gallery: "", publishAt: "" }); updateTip(tip, "used"); window.scrollTo({ top: 0, behavior: "smooth" }); }
 
   if (!signedIn) return <main className="editor-shell"><header className="editor-header"><a href="/" className="wordmark">STREET<span>SCOPE</span></a></header><section className="editor-card"><p className="kicker"><i /> PANEL REDAKCYJNY</p><h1>WEJDŹ DO<br /><em>REDAKCJI.</em></h1><form className="login-form" onSubmit={signIn}><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="E-MAIL" required /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="HASŁO" required /><button disabled={busy}>{busy ? "LOGOWANIE..." : "ZALOGUJ SIĘ →"}</button>{message && <small>{message}</small>}</form></section></main>;
 
