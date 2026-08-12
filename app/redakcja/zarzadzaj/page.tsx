@@ -20,7 +20,7 @@ export default function ZarzadzajPage() {
     setTips((rows as Tip[]|null)??[]); setReviews((queued as Review[]|null)??[]);
     setMedia((storage.data??[]).filter(file => file.name).map(file => ({name:file.name,url:client().storage.from("article-images").getPublicUrl(file.name).data.publicUrl})));
   }
-  useEffect(()=>{client().auth.getUser().then(async ({data})=>{const ok=data.user?.email?.toLowerCase()===CHIEF;setAllowed(ok);if(ok) await load();});},[]);
+  useEffect(()=>{client().auth.getUser().then(async ({data})=>{const email=data.user?.email?.toLowerCase()||"";const {data:person}=await client().from("staff_accounts").select("role,active").eq("email",email).maybeSingle();const ok=Boolean(person?.active&&person.role==="chief");setAllowed(ok);if(ok) await load();});},[]);
   async function setTip(id:number,status:string){const {error}=await client().from("tips").update({status}).eq("id",id);setMessage(error?error.message:"Status zgłoszenia zapisany.");if(!error) await load();}
   async function copy(url:string){await navigator.clipboard.writeText(url);setMessage("Link do zdjęcia skopiowany.");}
   async function approve(article:Review){ if(!window.confirm(`Opublikować „${article.title}”?`)) return; const now=new Date().toISOString(); const {error}=await client().from("articles").update({status:"published",review_status:"published",published_at:now,approved_at:now,approved_by:CHIEF,review_note:null,updated_at:now}).eq("id",article.id); setMessage(error?error.message:"Materiał zatwierdzony i opublikowany.");if(!error)await load(); }

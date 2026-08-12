@@ -10,7 +10,7 @@ type Article = { id: number; title: string; category: string; status: "draft" | 
 export default function StatystykiPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
-  useEffect(() => { const client = getSupabase(); client.auth.getUser().then(async ({ data }) => { const ok = data.user?.email?.toLowerCase() === EDITOR_EMAIL; setAllowed(ok); if (!ok) return; const { data: rows } = await client.from("articles").select("id,title,category,status,published_at,views").order("views", { ascending: false }); setArticles((rows as Article[] | null) ?? []); }); }, []);
+  useEffect(() => { const client = getSupabase(); client.auth.getUser().then(async ({ data }) => { const email = data.user?.email?.toLowerCase() || ""; const {data:person}=await client.from("staff_accounts").select("role,active").eq("email",email).maybeSingle(); const ok = Boolean(person?.active && person.role === "chief"); setAllowed(ok); if (!ok) return; const { data: rows } = await client.from("articles").select("id,title,category,status,published_at,views").order("views", { ascending: false }); setArticles((rows as Article[] | null) ?? []); }); }, []);
   const published = useMemo(() => articles.filter(article => article.status === "published"), [articles]);
   const totalViews = published.reduce((sum, article) => sum + (article.views ?? 0), 0);
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
