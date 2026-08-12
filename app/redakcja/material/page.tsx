@@ -14,7 +14,7 @@ export default function MaterialPage() {
   const [articleId, setArticleId] = useState(0); const [routeReady, setRouteReady] = useState(false); const isEditing = articleId > 0;
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [title, setTitle] = useState(""); const [excerpt, setExcerpt] = useState(""); const [category, setCategory] = useState("AKTUALNOŚCI");
-  const [body, setBody] = useState(""); const [cover, setCover] = useState<File | null>(null); const [existingCover, setExistingCover] = useState<string | null>(null); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState(false); const [loaded, setLoaded] = useState(false); const [selectedMedia, setSelectedMedia] = useState<HTMLElement | null>(null);
+  const [body, setBody] = useState(""); const [cover, setCover] = useState<File | null>(null); const [existingCover, setExistingCover] = useState<string | null>(null); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState(false); const [loaded, setLoaded] = useState(false); const [selectedMedia, setSelectedMedia] = useState<HTMLElement | null>(null); const [mediaWidth, setMediaWidth] = useState(100);
   const canvas = useRef<HTMLDivElement>(null); const inlineFile = useRef<HTMLInputElement>(null); const selectionRange = useRef<Range | null>(null);
   const client = () => getSupabase();
 
@@ -31,8 +31,18 @@ export default function MaterialPage() {
   function restoreCaret() { const selection = window.getSelection(); if (selectionRange.current && selection) { selection.removeAllRanges(); selection.addRange(selectionRange.current); } }
   function command(name: string, value?: string) { canvas.current?.focus(); restoreCaret(); document.execCommand(name, false, value); saveCaret(); syncBody(); }
   function addLink() { const link = window.prompt("Wklej adres linku:"); if (link) command("createLink", link); }
-  function selectMedia(event: MouseEvent<HTMLDivElement>) { const target = event.target as HTMLElement; const media = target.closest("figure.inline-media") as HTMLElement | null; if (!media) { setSelectedMedia(null); return; } setSelectedMedia(media); }
-  function updateMedia(layout: "wide" | "left" | "right" | "small") { if (!selectedMedia) return; selectedMedia.dataset.layout = layout; syncBody(); }
+  function selectMedia(event: MouseEvent<HTMLDivElement>) { const target = event.target as HTMLElement; const media = target.closest("figure.inline-media") as HTMLElement | null; if (!media) { setSelectedMedia(null); return; } setSelectedMedia(media); setMediaWidth(Number.parseInt(media.dataset.width || "100", 10) || 100); }
+  function updateMedia(layout: "wide" | "left" | "right" | "small") {
+    if (!selectedMedia) return;
+    selectedMedia.dataset.layout = layout;
+    if (layout === "wide") updateMediaWidth(100);
+    if (layout === "small") {
+      const requested = window.prompt("Podaj szerokość zdjęcia od 25 do 100 (%):", String(mediaWidth));
+      if (requested !== null) { const width = Number.parseInt(requested, 10); if (Number.isFinite(width) && width >= 25 && width <= 100) updateMediaWidth(width); else setMessage("Szerokość zdjęcia musi być liczbą od 25 do 100."); }
+    }
+    syncBody();
+  }
+  function updateMediaWidth(width: number) { if (!selectedMedia) return; selectedMedia.dataset.width = String(width); selectedMedia.style.width = `${width}%`; setMediaWidth(width); syncBody(); }
   function removeMedia() { if (!selectedMedia || !window.confirm("Usunąć to zdjęcie z treści?")) return; selectedMedia.remove(); setSelectedMedia(null); syncBody(); }
   async function upload(file: File) {
     if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) throw new Error("Nieprawidłowy plik");
@@ -47,7 +57,7 @@ export default function MaterialPage() {
     try {
       const url = await upload(file); canvas.current?.focus(); restoreCaret();
       const selection = window.getSelection(); const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-      const figure = document.createElement("figure"); figure.className = "inline-media";
+      const figure = document.createElement("figure"); figure.className = "inline-media"; figure.dataset.width = "100"; figure.style.width = "100%";
       const image = document.createElement("img"); image.src = url; image.alt = "Zdjęcie w materiale";
       const caption = document.createElement("figcaption"); caption.contentEditable = "true"; caption.dataset.placeholder = "Dodaj podpis zdjęcia…";
       figure.append(image, caption);
