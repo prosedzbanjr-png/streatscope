@@ -1,17 +1,3 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { getSupabase } from "../../lib/supabase";
 import { SiteNav } from "../site-nav";
 
-type Article = { id: number; title: string; category: string; excerpt: string; image_url: string | null; published_at: string | null };
-const fallbackImages = ["/images/hero.png", "/images/hq.png", "/images/mural.png"];
-
-export default function WiadomosciPage() {
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [category, setCategory] = useState("WSZYSTKIE");
-  useEffect(() => { getSupabase().from("articles").select("id,title,category,excerpt,image_url,published_at").eq("status", "published").order("published_at", { ascending: false }).then(({ data }) => setArticles((data as Article[] | null) ?? [])); }, []);
-  const categories = useMemo(() => ["WSZYSTKIE", ...Array.from(new Set(articles.map(article => article.category)))], [articles]);
-  const visible = category === "WSZYSTKIE" ? articles : articles.filter(article => article.category === category);
-  return <main className="listing-page"><SiteNav/><section className="listing-head"><p className="kicker"><i/> ARCHIWUM STREET SCOPE</p><h1>WSZYSTKIE<br/><em>WIADOMOŚCI.</em></h1><p>Relacje, które zostają dłużej niż nocne światła miasta.</p></section><section className="listing-content"><div className="category-bar">{categories.map(item => <button key={item} onClick={() => setCategory(item)} className={item === category ? "active" : ""}>{item}</button>)}</div>{visible.length ? <div className="article-cards">{visible.map((article, index) => <a href={`/artykul/${article.id}`} className="article-card" key={article.id}><img src={article.image_url || fallbackImages[index % fallbackImages.length]} alt=""/><div><p>{article.category} · {article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL") : "DZISIAJ"}</p><h2>{article.title}</h2><span>{article.excerpt}</span><b>CZYTAJ ARTYKUŁ →</b></div></a>)}</div> : <div className="no-articles"><p className="kicker"><i/> PUSTE ARCHIWUM</p><h2>JESZCZE NIC<br/><em>DO CZYTANIA.</em></h2><p>Opublikowane materiały z panelu redakcji pojawią się tutaj.</p></div>}</section><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>;
-}
+export default function OredakcjiPage() { return <main className="about-page"><SiteNav/><section className="about-hero"><div><p className="kicker"><i/> STREET SCOPE · LA MESA</p><h1>BEZ FILTRA.<br/><em>BEZ ŚCIEMY.</em></h1><p>Jesteśmy małą, niezależną redakcją, która patrzy na Los Santos z poziomu ulicy.</p></div><img src="/images/mural.png" alt="Mural StreetScope"/></section><section className="principles"><div><p className="kicker"><i/> NASZE ZASADY</p><h2>CO NAS<br/><em>NAPĘDZA.</em></h2></div><div className="principle-list"><article><b>01</b><h3>FAKTY PRZED HAŁASEM</h3><p>Nie gonimy za tanią sensacją. Gdy coś publikujemy, chcemy mieć powód, żeby to obronić.</p></article><article><b>02</b><h3>LUDZIE PRZED NAGŁÓWKAMI</h3><p>Każda historia ma ludzi po drugiej stronie. Nie zapominamy o tym.</p></article><article><b>03</b><h3>MIASTO JEST NASZE</h3><p>Nie patrzymy z góry. Jesteśmy częścią tego samego Los Santos, które opisujemy.</p></article></div></section><section className="join-us"><p className="kicker"><i/> MASZ OCZY I USZY</p><h2>MASZ TEMAT?<br/><em>DAJ ZNAĆ.</em></h2><a className="light-button" href="/zglos-temat">ZGŁOŚ TEMAT ↗</a></section><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>; }
