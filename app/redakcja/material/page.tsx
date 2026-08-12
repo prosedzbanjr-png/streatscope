@@ -68,6 +68,16 @@ export default function MaterialPage() {
     root.addEventListener("focusin", rememberField);
     return () => root.removeEventListener("focusin", rememberField);
   }, [loaded]);
+  useEffect(() => {
+    const root = canvas.current; if (!root) return;
+    const stopLabelActivation = (event: globalThis.MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest("textarea.free-text,figure.inline-media,figure.inline-video,figcaption,button,input,select,a")) return;
+      event.preventDefault();
+    };
+    root.addEventListener("click", stopLabelActivation);
+    return () => root.removeEventListener("click", stopLabelActivation);
+  }, [loaded]);
   useEffect(() => { if (!allowed || !loaded) return; const timer = window.setTimeout(() => { const content = { title, excerpt, category, body, socialTitle, socialDescription, socialImage, savedAt: new Date().toISOString() }; if (title || excerpt || body) { localStorage.setItem(draftKey, JSON.stringify(content)); setMessage("Szkic zapisany automatycznie."); } }, 900); return () => window.clearTimeout(timer); }, [title, excerpt, category, body, socialTitle, socialDescription, socialImage, allowed, loaded]);
   useEffect(() => { if (!allowed || !loaded || isEditing) return; const raw = localStorage.getItem(draftKey); if (!raw) return; try { const saved = JSON.parse(raw); if ((saved.title || saved.body) && window.confirm("Przywrócić automatycznie zapisany szkic?")) { setTitle(saved.title || ""); setExcerpt(saved.excerpt || ""); setCategory(saved.category || "AKTUALNOŚCI"); setBody(saved.body || ""); setSocialTitle(saved.socialTitle || ""); setSocialDescription(saved.socialDescription || ""); setSocialImage(saved.socialImage || ""); } } catch {} }, [allowed, loaded]);
 
