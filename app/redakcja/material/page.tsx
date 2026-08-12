@@ -12,44 +12,31 @@ function cleanText(html: string) {
 
 function turnFreeTextIntoInputs(root: HTMLElement) {
   root.querySelectorAll<HTMLDivElement>("div.free-text").forEach(field => {
-    const input = document.createElement("textarea");
-    input.className = field.className;
-    input.value = field.textContent || "";
-    input.dataset.placeholder = field.dataset.placeholder || "Kliknij i pisz…";
-    input.placeholder = input.dataset.placeholder;
-    input.setAttribute("aria-label", "Pole tekstowe materiału");
-    input.style.cssText = field.style.cssText;
+    field.contentEditable = "true";
+    field.dataset.placeholder = field.dataset.placeholder || "Kliknij i pisz…";
+    field.setAttribute("aria-label", "Pole tekstowe materiału");
     if (field.parentElement?.classList.contains("text-block")) {
       if (!field.parentElement.querySelector("[data-text-handle]")) {
         const handle = document.createElement("button");
         handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true"; handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe";
         field.parentElement.prepend(handle);
       }
-      field.replaceWith(input);
       return;
     }
     const block = document.createElement("div");
     block.className = "text-block";
     block.style.cssText = field.style.cssText;
-    input.style.cssText = "";
+    field.style.cssText = "";
     const handle = document.createElement("button");
     handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true"; handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe";
-    block.append(handle, input);
-    field.replaceWith(block);
+    block.append(handle, field);
   });
 }
 
 function serializeCanvas(root: HTMLElement) {
   const copy = root.cloneNode(true) as HTMLElement;
   copy.querySelectorAll(".text-handle").forEach(handle => handle.remove());
-  copy.querySelectorAll<HTMLTextAreaElement>("textarea.free-text").forEach(input => {
-    const field = document.createElement("div");
-    field.className = input.className;
-    field.dataset.placeholder = input.dataset.placeholder || "Kliknij i pisz…";
-    field.style.cssText = input.style.cssText;
-    field.textContent = input.value;
-    input.replaceWith(field);
-  });
+  copy.querySelectorAll<HTMLElement>(".free-text").forEach(field => field.removeAttribute("contenteditable"));
   return copy.innerHTML;
 }
 
@@ -95,7 +82,7 @@ export default function MaterialPage() {
     const root = canvas.current; if (!root) return;
     const stopLabelActivation = (event: globalThis.MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (target.closest("textarea.free-text,figure.inline-media,figure.inline-video,figcaption,button,input,select,a")) return;
+      if (target.closest(".free-text,figure.inline-media,figure.inline-video,figcaption,button,input,select,a")) return;
       event.preventDefault();
     };
     root.addEventListener("click", stopLabelActivation);
@@ -109,7 +96,7 @@ export default function MaterialPage() {
   function togglePreview() { if (!preview) commitBodyForPreview(); setPreview(value => !value); }
   function toggleMobilePreview() { if (!mobilePreview) commitBodyForPreview(); setMobilePreview(value => !value); }
   function pastePlainText(event: ClipboardEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest("textarea.free-text")) return;
+    if ((event.target as HTMLElement).closest(".free-text")) return;
     const text = event.clipboardData.getData("text/plain");
     if (!text) return;
     event.preventDefault();
@@ -127,16 +114,17 @@ export default function MaterialPage() {
   }
   function saveCaret() { const selection = window.getSelection(); if (selection?.rangeCount) selectionRange.current = selection.getRangeAt(0).cloneRange(); }
   function restoreCaret() { const selection = window.getSelection(); if (selectionRange.current && selection) { selection.removeAllRanges(); selection.addRange(selectionRange.current); } }
-  function command(name: string, value?: string) { canvas.current?.focus(); restoreCaret(); document.execCommand(name, false, value); saveCaret(); syncBody(); }
-  function setFont(font: string) { const field = activeTextField.current; if (field && font) { field.style.fontFamily = font; syncBody(); return; } if (font !== "default") command("fontName", font); }
+  function hasSelectedText() { const selection = window.getSelection(); return Boolean(selection?.rangeCount && !selection.getRangeAt(0).collapsed && selection.toString().trim()); }
+  function command(name: string, value?: string) { restoreCaret(); document.execCommand(name, false, value); saveCaret(); syncBody(); }
+  function setFont(font: string) { const field = activeTextField.current; if (hasSelectedText() && font !== "default") { command("fontName", font); return; } if (field && font) { field.style.fontFamily = font; syncBody(); return; } if (font !== "default") command("fontName", font); }
   function setFontSize(size: string) { if (size !== "default") command("fontSize", size); }
   function setTextPixelSize(size: number) {
-    const field = activeTextField.current; const fixed = Math.max(1, Math.min(100, size)); if (field) { field.style.fontSize = `${fixed}px`; syncBody(); return; }
+    const field = activeTextField.current; const fixed = Math.max(1, Math.min(100, size)); if (field && !hasSelectedText()) { field.style.fontSize = `${fixed}px`; syncBody(); return; }
     const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const span = document.createElement("span"); span.style.fontSize = `${fixed}px`;
     if (range.collapsed) { span.append(document.createTextNode("\u200b")); range.insertNode(span); const cursor = document.createRange(); cursor.setStart(span.firstChild!, 1); cursor.collapse(true); selection.removeAllRanges(); selection.addRange(cursor); } else { try { range.surroundContents(span); } catch { const fragment = range.extractContents(); span.append(fragment); range.insertNode(span); } }
     saveCaret(); syncBody();
   }
-  function setTextColor(color: string) { const field = activeTextField.current; if (field) { field.style.color = color; syncBody(); return; } command("foreColor", color); }
+  function setTextColor(color: string) { const field = activeTextField.current; if (hasSelectedText()) { command("foreColor", color); return; } if (field) { field.style.color = color; syncBody(); return; } command("foreColor", color); }
   function addLink() { const link = window.prompt("Wklej adres linku:"); if (link) command("createLink", link); }
   function youtubeEmbedUrl(url: string) { try { const parsed = new URL(url); const id = parsed.hostname.includes("youtu.be") ? parsed.pathname.slice(1) : parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).pop(); return id ? `https://www.youtube-nocookie.com/embed/${id.replace(/[^a-zA-Z0-9_-]/g, "")}` : null; } catch { return null; } }
   function insertVideo() {
@@ -150,7 +138,7 @@ export default function MaterialPage() {
   function addTextBlock() {
     const root = canvas.current;
     if (!root) return;
-    const box = root.getBoundingClientRect(); const block = document.createElement("div"); block.className = "text-block"; block.style.left = `${Math.max(18, Math.min(box.width - 260, 40))}px`; block.style.top = `${Math.max(18, root.scrollTop + 40)}px`; const handle = document.createElement("button"); handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true"; handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe"; const text = document.createElement("textarea"); text.className = "free-text"; text.dataset.placeholder = "Kliknij i pisz…"; text.placeholder = text.dataset.placeholder; text.setAttribute("aria-label", "Pole tekstowe materiału"); text.style.fontFamily = "Arial, sans-serif"; text.style.fontSize = "16px"; text.style.lineHeight = "1.35"; block.append(handle, text); root.append(block);
+    const box = root.getBoundingClientRect(); const block = document.createElement("div"); block.className = "text-block"; block.style.left = `${Math.max(18, Math.min(box.width - 260, 40))}px`; block.style.top = `${Math.max(18, root.scrollTop + 40)}px`; const handle = document.createElement("button"); handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true"; handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe"; const text = document.createElement("div"); text.className = "free-text"; text.dataset.placeholder = "Kliknij i pisz…"; text.contentEditable = "true"; text.setAttribute("aria-label", "Pole tekstowe materiału"); text.style.fontFamily = "Arial, sans-serif"; text.style.fontSize = "16px"; text.style.lineHeight = "1.35"; block.append(handle, text); root.append(block);
     activeTextField.current = text;
     text.focus({ preventScroll: true }); syncBody();
   }
