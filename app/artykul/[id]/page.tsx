@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "../../../lib/supabase";
+import { sanitizeArticleHtml } from "../../../lib/sanitize-html";
 import "./article.css";
 
 type Article = { id: number; title: string; category: string; excerpt: string; body: string | null; image_url: string | null; gallery: string[] | null; published_at: string | null; views: number };
@@ -13,8 +14,9 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
   if (missing) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><h1>TEGO MATERIAŁU<br />TU <em>NIE MA.</em></h1><a href="/" className="red-button">← WRÓĆ DO WIADOMOŚCI</a></main>;
   if (!article) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p className="kicker"><i /> ŁADOWANIE MATERIAŁU</p></main>;
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "long", year: "numeric" }) : "DZISIAJ";
-  const bodyHasRichContent = /<\/?[a-z][\s\S]*>/i.test(article.body || "");
+  const safeBody = sanitizeArticleHtml(article.body || "");
+  const bodyHasRichContent = /<\/?[a-z][\s\S]*>/i.test(safeBody);
   const paragraphs = (article.body || article.excerpt).split(/\n\s*\n/).filter(Boolean);
   const gallery = (article.gallery || []).filter(Boolean);
-  return <main className="article-page"><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><a href="/#stories">← WSZYSTKIE TEMATY</a></header><article className="article-content"><p className="kicker"><i /> {article.category} · {date} · {article.views ?? 0} ODSŁON</p><h1>{article.title}</h1><p className="article-lead">{article.excerpt}</p>{article.image_url && <img className="article-hero" src={article.image_url} alt="" />}{bodyHasRichContent ? <section className="article-rich" dangerouslySetInnerHTML={{ __html: article.body || "" }} /> : paragraphs.map((paragraph, index) => <p key={index} className="article-paragraph">{paragraph}</p>)}{gallery.length > 0 && <section className="article-gallery"><p className="kicker"><i /> GALERIA</p><div>{gallery.map((url, index) => <img src={url} alt={`Zdjęcie ${index + 1}`} key={`${url}-${index}`} />)}</div></section>}</article><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>;
+  return <main className="article-page"><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><a href="/#stories">← WSZYSTKIE TEMATY</a></header><article className="article-content"><p className="kicker"><i /> {article.category} · {date} · {article.views ?? 0} ODSŁON</p><h1>{article.title}</h1><p className="article-lead">{article.excerpt}</p>{article.image_url && <img className="article-hero" src={article.image_url} alt="" />}{bodyHasRichContent ? <section className="article-rich" dangerouslySetInnerHTML={{ __html: safeBody }} /> : paragraphs.map((paragraph, index) => <p key={index} className="article-paragraph">{paragraph}</p>)}{gallery.length > 0 && <section className="article-gallery"><p className="kicker"><i /> GALERIA</p><div>{gallery.map((url, index) => <img src={url} alt={`Zdjęcie ${index + 1}`} key={`${url}-${index}`} />)}</div></section>}</article><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>;
 }
