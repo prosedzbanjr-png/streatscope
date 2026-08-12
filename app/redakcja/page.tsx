@@ -47,7 +47,23 @@ export default function RedakcjaPage() {
       if (result.error) throw result.error; const isScheduled = status === "published" && publicationDate > now; cancelEdit(); setMessage(status === "published" ? (isScheduled ? "Materiał zaplanowany." : "Materiał opublikowany.") : "Szkic zapisany."); await loadData();
     } catch { setMessage("Nie udało się dodać zdjęć lub zapisać materiału. Sprawdź bucket i zasady Storage w Supabase."); } finally { setBusy(false); }
   }
-  async function removeArticle(article: Article) { if (!confirm(`Usunąć materiał „${article.title}”?`)) return; setBusy(true); const { error } = await client().from("articles").delete().eq("id", article.id); setMessage(error ? "Nie udało się usunąć materiału." : "Materiał usunięty."); await loadData(); setBusy(false); }
+  function storagePaths(article: Article) {
+    return [article.image_url, ...(Array.isArray(article.gallery) ? article.gallery : [])].flatMap(url => {
+      if (!url) return [];
+      const marker = "/storage/v1/object/public/article-images/";
+      const index = url.indexOf(marker);
+      return index >= 0 ? [decodeURIComponent(url.slice(index + marker.length).split("?")[0])] : [];
+    });
+  }
+  async function removeArticle(article: Article) {
+    if (!confirm(`Usunąć materiał „${article.title}”?`)) return;
+    setBusy(true);
+    const paths = storagePaths(article);
+    const imageResult = paths.length ? await client().storage.from("article-images").remove(paths) : { error: null };
+    const { error } = await client().from("articles").delete().eq("id", article.id);
+    setMessage(error ? "Nie udało się usunąć materiału." : imageResult.error ? "Materiał usunięty, ale zdjęcia nie zostały skasowane. Sprawdź zasady Storage." : "Materiał i jego zdjęcia usunięte.");
+    await loadData(); setBusy(false);
+  }
   async function togglePin(article: Article) { setBusy(true); if (!article.pinned) await client().from("articles").update({ pinned: false }).eq("pinned", true); const { error } = await client().from("articles").update({ pinned: !article.pinned }).eq("id", article.id); setMessage(error ? "Nie udało się zmienić przypięcia." : article.pinned ? "Materiał odpięty." : "Materiał przypięty."); await loadData(); setBusy(false); }
   async function updateTip(tip: Tip, status: Tip["status"]) { setBusy(true); const { error } = await client().from("tips").update({ status }).eq("id", tip.id); setMessage(error ? "Nie udało się zmienić statusu zgłoszenia." : "Status zgłoszenia zmieniony."); await loadData(); setBusy(false); }
   function makeArticleFromTip(tip: Tip) { setTab("articles"); setEditing(null); setForm({ title: tip.title, category: "AKTUALNOŚCI", excerpt: tip.description.slice(0, 300), body: `${tip.description}\n\nŹródło: zgłoszenie czytelnika z rejonu ${tip.district}.`, imageUrl: "", gallery: "", publishAt: "" }); updateTip(tip, "used"); window.scrollTo({ top: 0, behavior: "smooth" }); }
