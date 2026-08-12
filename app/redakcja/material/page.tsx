@@ -15,7 +15,7 @@ export default function MaterialPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [title, setTitle] = useState(""); const [excerpt, setExcerpt] = useState(""); const [category, setCategory] = useState("AKTUALNOŚCI"); const [socialTitle, setSocialTitle] = useState(""); const [socialDescription, setSocialDescription] = useState(""); const [socialImage, setSocialImage] = useState("");
   const [body, setBody] = useState(""); const [cover, setCover] = useState<File | null>(null); const [existingCover, setExistingCover] = useState<string | null>(null); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState(false); const [mobilePreview, setMobilePreview] = useState(false); const [loaded, setLoaded] = useState(false); const [selectedMedia, setSelectedMedia] = useState<HTMLElement | null>(null); const [mediaWidth, setMediaWidth] = useState(100); const [publishAt, setPublishAt] = useState(""); const [reviewStatus, setReviewStatus] = useState("draft"); const [articles, setArticles] = useState<Array<{ id: number; title: string; status: string; review_status?: string | null; updated_at: string }>>([]); const [versions, setVersions] = useState<Array<{ id:number; created_at:string; title:string }>>([]);
-  const canvas = useRef<HTMLDivElement>(null); const inlineFile = useRef<HTMLInputElement>(null); const selectionRange = useRef<Range | null>(null); const draggedMedia = useRef<HTMLElement | null>(null); const pointerMove = useRef<((event: PointerEvent) => void) | null>(null); const bodyLoaded = useRef(false);
+  const canvas = useRef<HTMLDivElement>(null); const inlineFile = useRef<HTMLInputElement>(null); const selectionRange = useRef<Range | null>(null); const draggedMedia = useRef<HTMLElement | null>(null); const pointerMove = useRef<((event: PointerEvent) => void) | null>(null); const bodyLoaded = useRef(false); const activeTextField = useRef<HTMLElement | null>(null);
   const client = () => getSupabase();
 
   const draftKey = `streetscope-material-draft-${isEditing ? articleId : "new"}`;
@@ -29,11 +29,11 @@ export default function MaterialPage() {
     const toolbar = canvas.current?.parentElement?.querySelector(".material-toolbar");
     if (!toolbar || toolbar.querySelector("[data-text-styles]")) return;
     const wrap = document.createElement("div"); wrap.className = "text-style-controls"; wrap.dataset.textStyles = "true"; wrap.contentEditable = "false";
-    const font = document.createElement("select"); font.className = "editor-select"; font.setAttribute("aria-label", "Czcionka"); font.innerHTML = '<option value="">CZCIONKA</option><option value="Arial">ARIAL</option><option value="Georgia">GEORGIA</option><option value="Courier New">MONO</option><option value="Barlow Condensed">BARLOW</option>';
+    const font = document.createElement("select"); font.className = "editor-select"; font.setAttribute("aria-label", "Czcionka"); font.innerHTML = '<option value="">CZCIONKA</option><option value="Arial, sans-serif">ARIAL</option><option value="Georgia, serif">GEORGIA</option><option value="Courier New, monospace">COURIER MONO</option><option value="Impact, sans-serif">IMPACT</option><option value="Trebuchet MS, sans-serif">TREBUCHET</option><option value="Barlow Condensed, sans-serif">BARLOW</option>';
     const size = document.createElement("input"); size.type = "range"; size.className = "editor-pixel-size"; size.min = "1"; size.max = "100"; size.value = "22"; size.setAttribute("aria-label", "Rozmiar czcionki od 1 do 100 pikseli");
     const sizeValue = document.createElement("output"); sizeValue.className = "editor-pixel-value"; sizeValue.textContent = "22 PX";
     const colorLabel = document.createElement("label"); colorLabel.className = "editor-color"; colorLabel.textContent = "KOLOR"; const color = document.createElement("input"); color.type = "color"; color.value = "#111111"; color.setAttribute("aria-label", "Kolor zaznaczonego tekstu"); colorLabel.append(color);
-    font.addEventListener("change", () => { if (font.value) command("fontName", font.value); }); size.addEventListener("input", () => { sizeValue.textContent = `${size.value} PX`; setTextPixelSize(Number(size.value)); }); color.addEventListener("change", () => command("foreColor", color.value));
+    font.addEventListener("change", () => { if (font.value) setFont(font.value); }); size.addEventListener("input", () => { sizeValue.textContent = `${size.value} PX`; setTextPixelSize(Number(size.value)); }); color.addEventListener("change", () => setTextColor(color.value));
     wrap.append(font, size, sizeValue, colorLabel); toolbar.append(wrap);
   }, [allowed, loaded]);
   useEffect(() => {
@@ -55,6 +55,12 @@ export default function MaterialPage() {
     };
     root.addEventListener("keydown", onKeyDown);
     return () => root.removeEventListener("keydown", onKeyDown);
+  }, [loaded]);
+  useEffect(() => {
+    const root = canvas.current; if (!root) return;
+    const rememberField = (event: FocusEvent) => { const field = (event.target as HTMLElement).closest(".free-text,p,h2,h3,blockquote,figcaption") as HTMLElement | null; if (field && root.contains(field)) activeTextField.current = field; };
+    root.addEventListener("focusin", rememberField);
+    return () => root.removeEventListener("focusin", rememberField);
   }, [loaded]);
   useEffect(() => { if (!allowed || !loaded) return; const timer = window.setTimeout(() => { const content = { title, excerpt, category, body, socialTitle, socialDescription, socialImage, savedAt: new Date().toISOString() }; if (title || excerpt || body) { localStorage.setItem(draftKey, JSON.stringify(content)); setMessage("Szkic zapisany automatycznie."); } }, 900); return () => window.clearTimeout(timer); }, [title, excerpt, category, body, socialTitle, socialDescription, socialImage, allowed, loaded]);
   useEffect(() => { if (!allowed || !loaded || isEditing) return; const raw = localStorage.getItem(draftKey); if (!raw) return; try { const saved = JSON.parse(raw); if ((saved.title || saved.body) && window.confirm("Przywrócić automatycznie zapisany szkic?")) { setTitle(saved.title || ""); setExcerpt(saved.excerpt || ""); setCategory(saved.category || "AKTUALNOŚCI"); setBody(saved.body || ""); setSocialTitle(saved.socialTitle || ""); setSocialDescription(saved.socialDescription || ""); setSocialImage(saved.socialImage || ""); } } catch {} }, [allowed, loaded]);
@@ -79,14 +85,15 @@ export default function MaterialPage() {
   function saveCaret() { const selection = window.getSelection(); if (selection?.rangeCount) selectionRange.current = selection.getRangeAt(0).cloneRange(); }
   function restoreCaret() { const selection = window.getSelection(); if (selectionRange.current && selection) { selection.removeAllRanges(); selection.addRange(selectionRange.current); } }
   function command(name: string, value?: string) { canvas.current?.focus(); restoreCaret(); document.execCommand(name, false, value); saveCaret(); syncBody(); }
-  function setFont(font: string) { if (font !== "default") command("fontName", font); }
+  function setFont(font: string) { const field = activeTextField.current; if (field && font) { field.style.fontFamily = font; syncBody(); return; } if (font !== "default") command("fontName", font); }
   function setFontSize(size: string) { if (size !== "default") command("fontSize", size); }
   function setTextPixelSize(size: number) {
-    const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const span = document.createElement("span"); span.style.fontSize = `${Math.max(1, Math.min(100, size))}px`;
+    const field = activeTextField.current; const fixed = Math.max(1, Math.min(100, size)); if (field) { field.style.fontSize = `${fixed}px`; syncBody(); return; }
+    const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const span = document.createElement("span"); span.style.fontSize = `${fixed}px`;
     if (range.collapsed) { span.append(document.createTextNode("\u200b")); range.insertNode(span); const cursor = document.createRange(); cursor.setStart(span.firstChild!, 1); cursor.collapse(true); selection.removeAllRanges(); selection.addRange(cursor); } else { try { range.surroundContents(span); } catch { const fragment = range.extractContents(); span.append(fragment); range.insertNode(span); } }
     saveCaret(); syncBody();
   }
-  function setTextColor(color: string) { command("foreColor", color); }
+  function setTextColor(color: string) { const field = activeTextField.current; if (field) { field.style.color = color; syncBody(); return; } command("foreColor", color); }
   function addLink() { const link = window.prompt("Wklej adres linku:"); if (link) command("createLink", link); }
   function youtubeEmbedUrl(url: string) { try { const parsed = new URL(url); const id = parsed.hostname.includes("youtu.be") ? parsed.pathname.slice(1) : parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).pop(); return id ? `https://www.youtube-nocookie.com/embed/${id.replace(/[^a-zA-Z0-9_-]/g, "")}` : null; } catch { return null; } }
   function insertVideo() {
