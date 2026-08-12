@@ -2,97 +2,53 @@
 
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { getSupabase } from "../../lib/supabase";
+import "./editor.css";
 
 const EDITOR_EMAIL = "kujalowicze@gmail.com";
-type Article = { id: number; title: string; category: string; status: "draft" | "published"; created_at: string; pinned?: boolean };
+type Article = { id: number; title: string; category: string; excerpt: string; body: string | null; image_url: string | null; gallery: string[] | null; status: "draft" | "published"; created_at: string; published_at: string | null; pinned?: boolean };
+type Tip = { id: number; title: string; district: string; description: string; contact: string | null; status: "new" | "reviewing" | "used" | "archived"; created_at: string };
+type ArticleForm = { title: string; category: string; excerpt: string; body: string; imageUrl: string; gallery: string };
+const emptyForm: ArticleForm = { title: "", category: "AKTUALNOŚCI", excerpt: "", body: "", imageUrl: "", gallery: "" };
 
 export default function RedakcjaPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [signedIn, setSignedIn] = useState(false);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [signedIn, setSignedIn] = useState(false);
+  const [articles, setArticles] = useState<Article[]>([]); const [tips, setTips] = useState<Tip[]>([]); const [tab, setTab] = useState<"articles" | "tips">("articles");
+  const [form, setForm] = useState<ArticleForm>(emptyForm); const [editing, setEditing] = useState<Article | null>(null); const [coverFile, setCoverFile] = useState<File | null>(null); const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
+  const client = () => getSupabase();
 
-  async function loadArticles() {
-    const { data } = await getSupabase().from("articles").select("id,title,category,status,created_at,pinned").order("pinned", { ascending: false }).order("created_at", { ascending: false }).limit(30);
-    setArticles((data as Article[] | null) ?? []);
+  async function loadData() {
+    const [articleResult, tipResult] = await Promise.all([
+      client().from("articles").select("id,title,category,excerpt,body,image_url,gallery,status,created_at,published_at,pinned").order("pinned", { ascending: false }).order("created_at", { ascending: false }).limit(60),
+      client().from("tips").select("id,title,district,description,contact,status,created_at").order("created_at", { ascending: false }).limit(80),
+    ]);
+    setArticles((articleResult.data as Article[] | null) ?? []); setTips((tipResult.data as Tip[] | null) ?? []);
   }
 
-  useEffect(() => {
-    const client = getSupabase();
-    client.auth.getUser().then(({ data }) => {
-      if (data.user?.email?.toLowerCase() === EDITOR_EMAIL) {
-        setSignedIn(true);
-        loadArticles();
-      }
-    });
-  }, []);
-
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setMessage("");
-    const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
-    if (error) setMessage("Nieprawidłowy e-mail lub hasło.");
-    else if (data.user?.email?.toLowerCase() !== EDITOR_EMAIL) setMessage("To konto nie ma uprawnień naczelnego.");
-    else { setSignedIn(true); setPassword(""); await loadArticles(); }
-    setBusy(false);
-  }
-
+  useEffect(() => { client().auth.getUser().then(({ data }) => { if (data.user?.email?.toLowerCase() === EDITOR_EMAIL) { setSignedIn(true); loadData(); } }); }, []);
+  async function signIn(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setBusy(true); setMessage(""); const { data, error } = await client().auth.signInWithPassword({ email, password }); if (error) setMessage("Nieprawidłowy e-mail lub hasło."); else if (data.user?.email?.toLowerCase() !== EDITOR_EMAIL) setMessage("To konto nie ma uprawnień naczelnego."); else { setSignedIn(true); setPassword(""); await loadData(); } setBusy(false); }
+  const updateForm = (key: keyof ArticleForm, value: string) => setForm(current => ({ ...current, [key]: value }));
+  function beginEdit(article: Article) { setEditing(article); setTab("articles"); setForm({ title: article.title, category: article.category, excerpt: article.excerpt, body: article.body ?? "", imageUrl: article.image_url ?? "", gallery: Array.isArray(article.gallery) ? article.gallery.join("\n") : "" }); setCoverFile(null); setGalleryFiles([]); setMessage(`Edytujesz: ${article.title}`); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  function cancelEdit() { setEditing(null); setForm(emptyForm); setCoverFile(null); setGalleryFiles([]); setMessage(""); }
   function selectCover(event: ChangeEvent<HTMLInputElement>) { setCoverFile(event.target.files?.[0] ?? null); }
   function selectGallery(event: ChangeEvent<HTMLInputElement>) { setGalleryFiles(Array.from(event.target.files ?? []).slice(0, 8)); }
-
-  async function uploadImage(file: File) {
-    if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) throw new Error("Nieprawidłowy plik");
-    const extension = file.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "jpg";
-    const path = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
-    const client = getSupabase();
-    const { error } = await client.storage.from("article-images").upload(path, file, { contentType: file.type, upsert: false });
-    if (error) throw error;
-    return client.storage.from("article-images").getPublicUrl(path).data.publicUrl;
-  }
-
-  async function saveArticle(event: FormEvent<HTMLFormElement>, status: "draft" | "published") {
-    event.preventDefault(); setBusy(true); setMessage("");
-    const form = new FormData(event.currentTarget);
-    const now = new Date().toISOString();
+  async function uploadImage(file: File) { if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) throw new Error("Nieprawidłowy plik"); const extension = file.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "jpg"; const path = `${Date.now()}-${crypto.randomUUID()}.${extension}`; const { error } = await client().storage.from("article-images").upload(path, file, { contentType: file.type, upsert: false }); if (error) throw error; return client().storage.from("article-images").getPublicUrl(path).data.publicUrl; }
+  async function saveArticle(status: "draft" | "published") {
+    if (form.title.trim().length < 6 || form.excerpt.trim().length < 30 || form.body.trim().length < 80) { setMessage("Uzupełnij tytuł, zajawkę i pełną treść artykułu."); return; }
+    setBusy(true); setMessage(""); const now = new Date().toISOString();
     try {
-      const uploadedCover = coverFile ? await uploadImage(coverFile) : "";
-      const uploadedGallery = await Promise.all(galleryFiles.map(uploadImage));
-      const manualGallery = String(form.get("gallery") ?? "").split(/\n|,/).map(url => url.trim()).filter(Boolean);
-      const { error } = await getSupabase().from("articles").insert({
-      title: String(form.get("title") ?? "").trim(), category: String(form.get("category") ?? "AKTUALNOŚCI"),
-      excerpt: String(form.get("excerpt") ?? "").trim(), body: String(form.get("body") ?? "").trim(),
-      image_url: uploadedCover || String(form.get("image_url") ?? "").trim() || null,
-      gallery: [...uploadedGallery, ...manualGallery],
-      status, author_email: EDITOR_EMAIL,
-      published_at: status === "published" ? now : null, updated_at: now,
-      });
-      if (error) throw error;
-      event.currentTarget.reset(); setCoverFile(null); setGalleryFiles([]); setMessage(status === "published" ? "Materiał opublikowany." : "Szkic zapisany."); await loadArticles();
-    } catch { setMessage("Nie udało się dodać zdjęć lub zapisać materiału. Sprawdź bucket i zasady Storage w Supabase."); }
-    setBusy(false);
+      const uploadedCover = coverFile ? await uploadImage(coverFile) : ""; const uploadedGallery = await Promise.all(galleryFiles.map(uploadImage)); const manualGallery = form.gallery.split(/\n|,/).map(url => url.trim()).filter(Boolean);
+      const payload = { title: form.title.trim(), category: form.category, excerpt: form.excerpt.trim(), body: form.body.trim(), image_url: uploadedCover || form.imageUrl.trim() || null, gallery: [...uploadedGallery, ...manualGallery], status, author_email: EDITOR_EMAIL, published_at: status === "published" ? (editing?.published_at ?? now) : null, updated_at: now };
+      const result = editing ? await client().from("articles").update(payload).eq("id", editing.id) : await client().from("articles").insert(payload);
+      if (result.error) throw result.error; cancelEdit(); setMessage(status === "published" ? "Materiał opublikowany." : "Szkic zapisany."); await loadData();
+    } catch { setMessage("Nie udało się dodać zdjęć lub zapisać materiału. Sprawdź bucket i zasady Storage w Supabase."); } finally { setBusy(false); }
   }
+  async function removeArticle(article: Article) { if (!confirm(`Usunąć materiał „${article.title}”?`)) return; setBusy(true); const { error } = await client().from("articles").delete().eq("id", article.id); setMessage(error ? "Nie udało się usunąć materiału." : "Materiał usunięty."); await loadData(); setBusy(false); }
+  async function togglePin(article: Article) { setBusy(true); if (!article.pinned) await client().from("articles").update({ pinned: false }).eq("pinned", true); const { error } = await client().from("articles").update({ pinned: !article.pinned }).eq("id", article.id); setMessage(error ? "Nie udało się zmienić przypięcia." : article.pinned ? "Materiał odpięty." : "Materiał przypięty."); await loadData(); setBusy(false); }
+  async function updateTip(tip: Tip, status: Tip["status"]) { setBusy(true); const { error } = await client().from("tips").update({ status }).eq("id", tip.id); setMessage(error ? "Nie udało się zmienić statusu zgłoszenia." : "Status zgłoszenia zmieniony."); await loadData(); setBusy(false); }
+  function makeArticleFromTip(tip: Tip) { setTab("articles"); setEditing(null); setForm({ title: tip.title, category: "AKTUALNOŚCI", excerpt: tip.description.slice(0, 300), body: `${tip.description}\n\nŹródło: zgłoszenie czytelnika z rejonu ${tip.district}.`, imageUrl: "", gallery: "" }); updateTip(tip, "used"); window.scrollTo({ top: 0, behavior: "smooth" }); }
 
-  async function removeArticle(article: Article) {
-    if (!confirm(`Usunąć materiał „${article.title}”? Tej operacji nie da się cofnąć.`)) return;
-    setBusy(true); setMessage("");
-    const { error } = await getSupabase().from("articles").delete().eq("id", article.id);
-    setMessage(error ? "Nie udało się usunąć materiału." : "Materiał usunięty.");
-    await loadArticles(); setBusy(false);
-  }
+  if (!signedIn) return <main className="editor-shell"><header className="editor-header"><a href="/" className="wordmark">STREET<span>SCOPE</span></a></header><section className="editor-card"><p className="kicker"><i /> PANEL REDAKCYJNY</p><h1>WEJDŹ DO<br /><em>REDAKCJI.</em></h1><form className="login-form" onSubmit={signIn}><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="E-MAIL" required /><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="HASŁO" required /><button disabled={busy}>{busy ? "LOGOWANIE..." : "ZALOGUJ SIĘ →"}</button>{message && <small>{message}</small>}</form></section></main>;
 
-  async function togglePin(article: Article) {
-    setBusy(true); setMessage("");
-    const client = getSupabase();
-    if (!article.pinned) await client.from("articles").update({ pinned: false }).eq("pinned", true);
-    const { error } = await client.from("articles").update({ pinned: !article.pinned }).eq("id", article.id);
-    setMessage(error ? "Nie udało się zmienić przypięcia." : article.pinned ? "Materiał odpięty." : "Materiał przypięty na stronie głównej.");
-    await loadArticles(); setBusy(false);
-  }
-
-  if (!signedIn) return <main className="editor-shell"><header className="editor-header"><a href="/" className="wordmark">STREET<span>SCOPE</span></a></header><section className="editor-card"><p className="kicker"><i /> PANEL REDAKCYJNY</p><h1>WEJDŹ DO<br /><em>REDAKCJI.</em></h1><form className="login-form" onSubmit={signIn}><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="E-MAIL" required/><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="HASŁO" required/><button disabled={busy}>{busy ? "LOGOWANIE..." : "ZALOGUJ SIĘ →"}</button>{message && <small>{message}</small>}</form></section></main>;
-
-  return <main className="editor-shell"><header className="editor-header"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><div><span>NACZELNY</span><button onClick={async () => { await getSupabase().auth.signOut(); setSignedIn(false); }}>WYLOGUJ</button></div></header><section className="editor-dashboard"><div className="dashboard-heading"><div><p className="kicker"><i /> PULPIT NACZELNEGO</p><h1>NOWY<br /><em>MATERIAŁ.</em></h1></div><p>Twórz szkice albo publikuj je od razu. Wpisy po publikacji trafiają na stronę główną.</p></div><form className="article-form" onSubmit={e => saveArticle(e, "published")}><label>TYTUŁ<input name="title" required minLength={6} maxLength={120} placeholder="Co wydarzyło się w mieście?" /></label><label>KATEGORIA<select name="category" defaultValue="AKTUALNOŚCI"><option>AKTUALNOŚCI</option><option>ULICE</option><option>SPORT</option><option>OPINIE</option><option>WYDARZENIA</option></select></label><label className="wide">ZAJAWKA<input name="excerpt" required minLength={30} maxLength={320} placeholder="Krótki opis widoczny na stronie głównej..." /></label><label className="wide">PEŁNA TREŚĆ ARTYKUŁU<textarea name="body" required minLength={80} maxLength={12000} placeholder="Tu wpisujesz pełny artykuł. Puste linie tworzą kolejne akapity." /></label><label className="wide">ZDJĘCIE GŁÓWNE — WYBIERZ PLIK<input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} /><small>{coverFile ? `Wybrano: ${coverFile.name}` : "JPG, PNG lub WEBP · maks. 8 MB"}</small></label><label className="wide">GALERIA — WYBIERZ ZDJĘCIA<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={selectGallery} /><small>{galleryFiles.length ? `Wybrano zdjęć: ${galleryFiles.length}` : "Maksymalnie 8 zdjęć · JPG, PNG lub WEBP"}</small></label><label className="wide">LUB DODAJ LINK DO ZDJĘCIA GŁÓWNEGO<input name="image_url" type="url" placeholder="https://..." /></label><label className="wide">DODATKOWE LINKI DO GALERII (JEDEN W KAŻDEJ LINII)<textarea name="gallery" className="gallery-input" placeholder={'https://...\nhttps://...'} /></label><div className="form-actions"><span>{message}</span><button type="button" disabled={busy} onClick={e => { const form = e.currentTarget.form; if (form?.reportValidity()) saveArticle({ preventDefault() {}, currentTarget: form } as FormEvent<HTMLFormElement>, "draft"); }}>{busy ? "ZAPIS..." : "ZAPISZ SZKIC"}</button><button type="submit" className="publish" disabled={busy}>{busy ? "PUBLIKACJA..." : "OPUBLIKUJ ↗"}</button></div></form></section><section className="article-list"><div className="list-title"><p className="kicker"><i /> TWOJE MATERIAŁY</p><h2>REDAKCYJNA<br /><em>KOLEJKA.</em></h2></div><div className="list-items">{articles.length ? articles.map(article => <article key={article.id}><span className={article.status === "published" ? "status live" : "status"}>{article.pinned ? "PRZYPIĘTY" : article.status === "published" ? "OPUBLIKOWANO" : "SZKIC"}</span><div><b>{article.category}</b><h3>{article.title}</h3><small>{new Date(article.created_at).toLocaleDateString("pl-PL")}</small><div className="article-tools">{article.status === "published" && <><button disabled={busy} onClick={() => togglePin(article)}>{article.pinned ? "ODEPNIJ" : "PRZYPNIJ"}</button><a className="article-open" href={`/artykul/${article.id}`}>OTWÓRZ ↗</a></>}<button className="article-delete" disabled={busy} onClick={() => removeArticle(article)}>USUŃ</button></div></div></article>) : <p className="empty-state">Brak materiałów. Pierwszy artykuł nie napisze się sam.</p>}</div></section><a className="editor-back editor-home" href="/">← WRÓĆ NA STRONĘ GŁÓWNĄ</a></main>;
+  return <main className="editor-shell"><header className="editor-header"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><div><span>NACZELNY</span><button onClick={async () => { await client().auth.signOut(); setSignedIn(false); }}>WYLOGUJ</button></div></header><section className="editor-dashboard"><div className="editor-tabs"><button className={tab === "articles" ? "active" : ""} onClick={() => setTab("articles")}>MATERIAŁY</button><button className={tab === "tips" ? "active" : ""} onClick={() => setTab("tips")}>ZGŁOSZENIA {tips.filter(t => t.status === "new").length ? `(${tips.filter(t => t.status === "new").length})` : ""}</button></div>{tab === "articles" ? <><div className="dashboard-heading"><div><p className="kicker"><i /> {editing ? "EDYCJA MATERIAŁU" : "PULPIT NACZELNEGO"}</p><h1>{editing ? "EDYTUJ" : "NOWY"}<br /><em>MATERIAŁ.</em></h1></div><p>{editing ? "Zmień treść i zapisz szkic albo opublikuj aktualizację." : "Twórz szkice albo publikuj je od razu. Wpisy trafiają na stronę główną."}</p></div><div className="article-form"><label>TYTUŁ<input value={form.title} onChange={e => updateForm("title", e.target.value)} required minLength={6} maxLength={120} placeholder="Co wydarzyło się w mieście?" /></label><label>KATEGORIA<select value={form.category} onChange={e => updateForm("category", e.target.value)}><option>AKTUALNOŚCI</option><option>ULICE</option><option>SPORT</option><option>OPINIE</option><option>WYDARZENIA</option></select></label><label className="wide">ZAJAWKA<input value={form.excerpt} onChange={e => updateForm("excerpt", e.target.value)} required minLength={30} maxLength={320} placeholder="Krótki opis widoczny na stronie głównej..." /></label><label className="wide">PEŁNA TREŚĆ ARTYKUŁU<textarea value={form.body} onChange={e => updateForm("body", e.target.value)} required minLength={80} maxLength={12000} placeholder="Puste linie tworzą kolejne akapity." /></label><label className="wide">ZDJĘCIE GŁÓWNE — WYBIERZ PLIK<input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectCover} /><small>{coverFile ? `Wybrano: ${coverFile.name}` : "JPG, PNG lub WEBP · maks. 8 MB"}</small></label><label className="wide">GALERIA — WYBIERZ ZDJĘCIA<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={selectGallery} /><small>{galleryFiles.length ? `Wybrano zdjęć: ${galleryFiles.length}` : "Maksymalnie 8 zdjęć"}</small></label><label className="wide">LUB LINK DO ZDJĘCIA GŁÓWNEGO<input value={form.imageUrl} onChange={e => updateForm("imageUrl", e.target.value)} type="url" placeholder="https://..." /></label><label className="wide">DODATKOWE LINKI GALERII<textarea value={form.gallery} onChange={e => updateForm("gallery", e.target.value)} className="gallery-input" placeholder={'https://...\nhttps://...'} /></label><div className="form-actions"><span>{message}</span>{editing && <button type="button" onClick={cancelEdit}>ANULUJ EDYCJĘ</button>}<button type="button" disabled={busy} onClick={() => saveArticle("draft")}>{busy ? "ZAPIS..." : "ZAPISZ SZKIC"}</button><button type="button" className="publish" disabled={busy} onClick={() => saveArticle("published")}>{busy ? "PUBLIKACJA..." : "OPUBLIKUJ ↗"}</button></div></div></> : <section className="tips-dashboard"><div className="dashboard-heading"><div><p className="kicker"><i /> SKRZYNKA REDAKCYJNA</p><h1>NOWE<br /><em>TEMATY.</em></h1></div><p>Zgłoszenia zapisują się tutaj i równolegle trafiają na Discord.</p></div><div className="tip-list">{tips.length ? tips.map(tip => <article key={tip.id}><div><span className={`tip-status ${tip.status}`}>{tip.status === "new" ? "NOWE" : tip.status === "reviewing" ? "W TRAKCIE" : tip.status === "used" ? "WYKORZYSTANE" : "ARCHIWUM"}</span><b>{tip.district}</b><h3>{tip.title}</h3><p>{tip.description}</p><small>{tip.contact || "Anonimowo"} · {new Date(tip.created_at).toLocaleString("pl-PL")}</small></div><div className="tip-actions">{tip.status === "new" && <button disabled={busy} onClick={() => updateTip(tip, "reviewing")}>PRZEJMIJ</button>}<button disabled={busy} onClick={() => makeArticleFromTip(tip)}>UTWÓRZ ARTYKUŁ</button>{tip.status !== "archived" && <button disabled={busy} className="article-delete" onClick={() => updateTip(tip, "archived")}>ARCHIWIZUJ</button>}</div></article>) : <p className="empty-state">Brak zgłoszeń. Wykonaj migrację SQL z instrukcji, aby aktywować skrzynkę.</p>}</div></section>}</section>{tab === "articles" && <section className="article-list"><div className="list-title"><p className="kicker"><i /> TWOJE MATERIAŁY</p><h2>REDAKCYJNA<br /><em>KOLEJKA.</em></h2></div><div className="list-items">{articles.length ? articles.map(article => <article key={article.id}><span className={article.status === "published" ? "status live" : "status"}>{article.pinned ? "PRZYPIĘTY" : article.status === "published" ? "OPUBLIKOWANO" : "SZKIC"}</span><div><b>{article.category}</b><h3>{article.title}</h3><small>{new Date(article.created_at).toLocaleDateString("pl-PL")}</small><div className="article-tools"><button disabled={busy} onClick={() => beginEdit(article)}>EDYTUJ</button>{article.status === "published" && <><button disabled={busy} onClick={() => togglePin(article)}>{article.pinned ? "ODEPNIJ" : "PRZYPNIJ"}</button><a className="article-open" href={`/artykul/${article.id}`}>OTWÓRZ ↗</a></>}<button className="article-delete" disabled={busy} onClick={() => removeArticle(article)}>USUŃ</button></div></div></article>) : <p className="empty-state">Brak materiałów. Pierwszy artykuł nie napisze się sam.</p>}</div></section>}<a className="editor-back editor-home" href="/">← WRÓĆ NA STRONĘ GŁÓWNĄ</a></main>;
 }
