@@ -35,6 +35,7 @@ function turnFreeTextIntoInputs(root: HTMLElement) {
 
 function serializeCanvas(root: HTMLElement) {
   const copy = root.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll("[data-page-sheet]").forEach(sheet => sheet.remove());
   copy.querySelectorAll(".text-handle").forEach(handle => handle.remove());
   copy.querySelectorAll<HTMLElement>(".free-text").forEach(field => field.removeAttribute("contenteditable"));
   return copy.innerHTML;
@@ -109,14 +110,26 @@ export default function MaterialPage() {
   function fitCanvasPages() {
     const root = canvas.current;
     if (!root) return;
-    const pageHeight = 1120;
+    const pageHeight = 980;
+    const pageGap = 28;
+    root.querySelectorAll("[data-page-sheet]").forEach(sheet => sheet.remove());
     const bottom = Array.from(root.children).reduce((max, node) => {
       const element = node as HTMLElement;
       return Math.max(max, element.offsetTop + element.offsetHeight);
     }, 0);
-    const pages = Math.max(1, Math.ceil((bottom + 120) / pageHeight));
-    root.style.minHeight = `${pages * pageHeight}px`;
+    const pages = Math.max(1, Math.ceil((bottom + 140) / pageHeight));
+    const totalHeight = pages * pageHeight + (pages - 1) * pageGap;
+    root.style.minHeight = `${totalHeight}px`;
     root.dataset.pages = String(pages);
+    for (let index = 0; index < pages; index += 1) {
+      const sheet = document.createElement("div");
+      sheet.dataset.pageSheet = "true";
+      sheet.className = "material-page-sheet";
+      sheet.style.top = `${index * (pageHeight + pageGap)}px`;
+      sheet.style.height = `${pageHeight}px`;
+      sheet.innerHTML = `<span>STRONA ${index + 1}</span>`;
+      root.prepend(sheet);
+    }
   }
   function syncBody() { const root = canvas.current; if (!root) { bodyRef.current = ""; return; } fitCanvasPages(); root.querySelectorAll(".is-selected,.is-dragging,.drop-before,.drop-after").forEach(node => node.classList.remove("is-selected", "is-dragging", "drop-before", "drop-after")); bodyRef.current = serializeCanvas(root); if (editTimer.current) window.clearTimeout(editTimer.current); editTimer.current = window.setTimeout(() => { setBody(bodyRef.current); setEditorDirty(value => value + 1); }, 650); }
   function commitBodyForPreview() { const html = canvas.current ? serializeCanvas(canvas.current) : bodyRef.current; bodyRef.current = html; setBody(html); }
