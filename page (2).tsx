@@ -1,19 +1,3 @@
-"use client";
+import { SiteNav } from "../site-nav";
 
-import { useEffect, useState } from "react";
-import { getSupabase } from "../../../lib/supabase";
-import "./article.css";
-
-type Article = { id: number; title: string; category: string; excerpt: string; body: string | null; image_url: string | null; gallery: string[] | null; published_at: string | null };
-
-export default function ArticlePage({ params }: { params: Promise<{ id: string }> }) {
-  const [article, setArticle] = useState<Article | null>(null);
-  const [missing, setMissing] = useState(false);
-  useEffect(() => { params.then(({ id }) => getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at").eq("id", Number(id)).eq("status", "published").single().then(({ data }) => { if (data) setArticle(data as Article); else setMissing(true); })); }, [params]);
-  if (missing) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><h1>TEGO MATERIAŁU<br />TU <em>NIE MA.</em></h1><a href="/" className="red-button">← WRÓĆ DO WIADOMOŚCI</a></main>;
-  if (!article) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p className="kicker"><i /> ŁADOWANIE MATERIAŁU</p></main>;
-  const date = article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "long", year: "numeric" }) : "DZISIAJ";
-  const paragraphs = (article.body || article.excerpt).split(/\n\s*\n/).filter(Boolean);
-  const gallery = (article.gallery || []).filter(Boolean);
-  return <main className="article-page"><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><a href="/#stories">← WSZYSTKIE TEMATY</a></header><article className="article-content"><p className="kicker"><i /> {article.category} · {date}</p><h1>{article.title}</h1><p className="article-lead">{article.excerpt}</p>{article.image_url && <img className="article-hero" src={article.image_url} alt="" />}{paragraphs.map((paragraph, index) => <p key={index} className="article-paragraph">{paragraph}</p>)}{gallery.length > 0 && <section className="article-gallery"><p className="kicker"><i /> GALERIA</p><div>{gallery.map((url, index) => <img src={url} alt={`Zdjęcie ${index + 1}`} key={`${url}-${index}`} />)}</div></section>}</article><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>;
-}
+export default function OredakcjiPage() { return <main className="about-page"><SiteNav/><section className="about-hero"><div><p className="kicker"><i/> STREET SCOPE · LA MESA</p><h1>BEZ FILTRA.<br/><em>BEZ ŚCIEMY.</em></h1><p>Jesteśmy małą, niezależną redakcją, która patrzy na Los Santos z poziomu ulicy.</p></div><img src="/images/mural.png" alt="Mural StreetScope"/></section><section className="principles"><div><p className="kicker"><i/> NASZE ZASADY</p><h2>CO NAS<br/><em>NAPĘDZA.</em></h2></div><div className="principle-list"><article><b>01</b><h3>FAKTY PRZED HAŁASEM</h3><p>Nie gonimy za tanią sensacją. Gdy coś publikujemy, chcemy mieć powód, żeby to obronić.</p></article><article><b>02</b><h3>LUDZIE PRZED NAGŁÓWKAMI</h3><p>Każda historia ma ludzi po drugiej stronie. Nie zapominamy o tym.</p></article><article><b>03</b><h3>MIASTO JEST NASZE</h3><p>Nie patrzymy z góry. Jesteśmy częścią tego samego Los Santos, które opisujemy.</p></article></div></section><section className="join-us"><p className="kicker"><i/> MASZ OCZY I USZY</p><h2>MASZ TEMAT?<br/><em>DAJ ZNAĆ.</em></h2><a className="light-button" href="/zglos-temat">ZGŁOŚ TEMAT ↗</a></section><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>; }
