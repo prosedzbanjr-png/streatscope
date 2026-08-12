@@ -271,6 +271,40 @@ export default function MaterialPage() {
     } catch { setMessage("Nie udało się zapisać materiału. Sprawdź bucket article-images w Supabase."); } finally { setBusy(false); }
   }
   async function showVersions() { if (!isEditing) { setMessage("Historia pojawi się po pierwszym zapisie materiału."); return; } const { data } = await client().from("article_versions").select("id,created_at,title").eq("article_id", articleId).order("created_at", { ascending:false }).limit(10); setVersions((data as Array<{ id:number; created_at:string; title:string }> | null) ?? []); }
+  const canManageArticles = ["editor_in_chief", "deputy_editor_in_chief"].includes(role || "");
+  async function deleteArticle(id: number, articleTitle: string) {
+    if (!canManageArticles) { setMessage("Tylko Redaktor Naczelny albo Zastępca może usuwać materiały."); return; }
+    if (!window.confirm(`Usunąć materiał „${articleTitle}”? Tej operacji nie da się cofnąć.`)) return;
+    setBusy(true);
+    const { error } = await client().from("articles").delete().eq("id", id);
+    setBusy(false);
+    if (error) { setMessage(error.message); return; }
+    setMessage("Materiał został usunięty.");
+    if (id === articleId) { window.location.href = "/redakcja/material"; return; }
+    await loadQueue();
+  }
+  useEffect(() => {
+    if (!canManageArticles) return;
+    const queue = document.querySelector<HTMLElement>(".material-queue");
+    if (!queue) return;
+    const cleanup: HTMLButtonElement[] = [];
+    queue.querySelectorAll<HTMLAnchorElement>('a[href*="/redakcja/material?id="]').forEach(link => {
+      if (link.querySelector("[data-delete-article]")) return;
+      const id = Number(new URL(link.href).searchParams.get("id"));
+      const title = link.querySelector("b")?.textContent?.trim() || "ten materiał";
+      if (!Number.isInteger(id) || id < 1) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "article-delete";
+      button.dataset.deleteArticle = "true";
+      button.textContent = "USUŃ";
+      button.title = "Usuń materiał";
+      button.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); deleteArticle(id, title); });
+      link.append(button);
+      cleanup.push(button);
+    });
+    return () => cleanup.forEach(button => button.remove());
+  }, [articles, canManageArticles]);
 
   if (allowed === null || !loaded) return <main className="material-page"><p>ŁADOWANIE…</p></main>;
   if (!allowed) return <main className="material-page"><a className="wordmark" href="/">STREET<span>SCOPE</span></a><h1>DOSTĘP<br /><em>ZAMKNIĘTY.</em></h1><a className="material-action" href="/redakcja">ZALOGUJ SIĘ →</a></main>;
