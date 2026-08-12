@@ -69,8 +69,9 @@ export default function MaterialPage() {
   useEffect(() => { const root = canvas.current; if (!root) return; if (!bodyLoaded.current) { const normalized = body.replace(/\sclass=(['"])\1/g, "").replace(/\sclass=(['"])is-selected\1/g, "").replace(/\sclass=(['"])inline-media is-selected\1/g, ' class="inline-media"'); root.innerHTML = normalized; turnFreeTextIntoInputs(root); bodyRef.current = normalized; bodyLoaded.current = true; } root.contentEditable = "false"; root.querySelectorAll("p,h2,h3,blockquote,figcaption").forEach(node => { (node as HTMLElement).contentEditable = "true"; }); }, [body]);
   useEffect(() => { const root = canvas.current; if (!root) return; root.querySelectorAll("figure.inline-media").forEach(figure => { if (figure.querySelector("[data-media-handle]")) return; const handle = document.createElement("span"); handle.className = "media-handle"; handle.contentEditable = "false"; handle.draggable = false; handle.dataset.mediaHandle = "true"; handle.setAttribute("role", "button"); handle.setAttribute("aria-label", "Złap i przeciągnij zdjęcie"); handle.title = "Złap i przeciągnij zdjęcie"; handle.textContent = "⠿"; figure.prepend(handle); }); }, [body, selectedMedia]);
   useEffect(() => {
-    const toolbar = canvas.current?.parentElement?.querySelector(".material-toolbar");
-    if (!toolbar || toolbar.querySelector("[data-text-styles]")) return;
+    const installControls = () => {
+    const toolbar = document.querySelector(".material-toolbar");
+    if (!toolbar || toolbar.parentElement?.querySelector("[data-text-styles]")) return;
     const wrap = document.createElement("div"); wrap.className = "text-style-controls"; wrap.dataset.textStyles = "true"; wrap.contentEditable = "false";
     const font = document.createElement("select"); font.className = "editor-select"; font.setAttribute("aria-label", "Czcionka"); font.innerHTML = '<option value="">CZCIONKA</option><option value="Arial, sans-serif">ARIAL</option><option value="Georgia, serif">GEORGIA</option><option value="Courier New, monospace">COURIER MONO</option><option value="Impact, sans-serif">IMPACT</option><option value="Trebuchet MS, sans-serif">TREBUCHET</option><option value="Barlow Condensed, sans-serif">BARLOW</option>';
     const size = document.createElement("input"); size.type = "range"; size.className = "editor-pixel-size"; size.min = "1"; size.max = "100"; size.value = "22"; size.setAttribute("aria-label", "Rozmiar czcionki od 1 do 100 pikseli");
@@ -79,8 +80,11 @@ export default function MaterialPage() {
     font.addEventListener("change", () => { if (font.value) setFont(font.value); }); size.addEventListener("input", () => { sizeValue.textContent = `${size.value} PX`; setTextPixelSize(Number(size.value)); }); color.addEventListener("change", () => setTextColor(color.value));
     const addText = document.createElement("button"); addText.type = "button"; addText.textContent = "+ POLE TEKSTU"; addText.addEventListener("mousedown", event => event.preventDefault()); addText.addEventListener("click", addTextBlock);
     const removeText = document.createElement("button"); removeText.type = "button"; removeText.textContent = "USUŃ POLE"; removeText.className = "delete-media"; removeText.addEventListener("mousedown", event => event.preventDefault()); removeText.addEventListener("click", removeActiveTextBlock);
-    wrap.append(font, size, sizeValue, colorLabel, addText, removeText); toolbar.append(wrap);
-  }, [allowed, loaded]);
+    wrap.append(font, size, sizeValue, colorLabel, addText, removeText); toolbar.parentElement?.append(wrap);
+    };
+    const frame = window.requestAnimationFrame(installControls); const timer = window.setTimeout(installControls, 250);
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer); };
+  });
   useEffect(() => {
     const root = canvas.current; if (!root) return;
     const rememberField = (event: FocusEvent) => { const field = (event.target as HTMLElement).closest(".free-text,p,h2,h3,blockquote,figcaption") as HTMLElement | null; if (field && root.contains(field)) activeTextField.current = field; };
