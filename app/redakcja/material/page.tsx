@@ -126,9 +126,12 @@ export default function MaterialPage() {
   function setFont(font: string) { const field = activeTextField.current; if (restoreAndHasSelectedText() && font !== "default") { document.execCommand("fontName", false, font); saveCaret(); syncBody(); return; } if (field && font) { field.style.fontFamily = font; syncBody(); return; } if (font !== "default") command("fontName", font); }
   function setFontSize(size: string) { if (size !== "default") command("fontSize", size); }
   function setTextPixelSize(size: number) {
-    const field = activeTextField.current; const fixed = Math.max(1, Math.min(100, size)); const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const selected = !range.collapsed && selection.toString().trim().length > 0; if (field && !selected) { field.style.fontSize = `${fixed}px`; syncBody(); return; } const span = document.createElement("span"); span.style.fontSize = `${fixed}px`;
-    if (range.collapsed) { span.append(document.createTextNode("\u200b")); range.insertNode(span); const cursor = document.createRange(); cursor.setStart(span.firstChild!, 1); cursor.collapse(true); selection.removeAllRanges(); selection.addRange(cursor); } else { try { range.surroundContents(span); } catch { const fragment = range.extractContents(); span.append(fragment); range.insertNode(span); } }
-    saveCaret(); syncBody();
+    const field = activeTextField.current; const fixed = Math.max(1, Math.min(100, size)); const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const selected = !range.collapsed && selection.toString().trim().length > 0;
+    if (field && !selected) { field.style.fontSize = `${fixed}px`; field.style.lineHeight = "1.35"; syncBody(); return; }
+    const common = range.commonAncestorContainer instanceof HTMLElement ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    if (!selected || !common?.closest(".free-text")) return;
+    const fragment = range.extractContents(); const span = document.createElement("span"); span.style.fontSize = `${fixed}px`; span.style.lineHeight = "1.08"; span.style.display = "inline"; span.style.verticalAlign = "baseline"; span.append(fragment); range.insertNode(span);
+    const next = document.createRange(); next.selectNodeContents(span); selection.removeAllRanges(); selection.addRange(next); saveCaret(); syncBody();
   }
   function setTextColor(color: string) { const field = activeTextField.current; if (restoreAndHasSelectedText()) { document.execCommand("foreColor", false, color); saveCaret(); syncBody(); return; } if (field) { field.style.color = color; syncBody(); return; } command("foreColor", color); }
   function addLink() { const link = window.prompt("Wklej adres linku:"); if (link) command("createLink", link); }
