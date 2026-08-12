@@ -45,13 +45,31 @@ export default function MaterialPage() {
   const [articleId, setArticleId] = useState(0); const [routeReady, setRouteReady] = useState(false); const isEditing = articleId > 0;
   const [allowed, setAllowed] = useState<boolean | null>(null); const [role, setRole] = useState<"editor_in_chief" | "deputy_editor_in_chief" | "journalist" | null>(null); const [currentEmail, setCurrentEmail] = useState(""); const [currentName, setCurrentName] = useState(""); const [articleAuthor, setArticleAuthor] = useState("");
   const [title, setTitle] = useState(""); const [excerpt, setExcerpt] = useState(""); const [category, setCategory] = useState("AKTUALNOŚCI"); const [socialTitle, setSocialTitle] = useState(""); const [socialDescription, setSocialDescription] = useState(""); const [socialImage, setSocialImage] = useState("");
-  const [body, setBody] = useState(""); const [cover, setCover] = useState<File | null>(null); const [existingCover, setExistingCover] = useState<string | null>(null); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState(false); const [mobilePreview, setMobilePreview] = useState(false); const [loaded, setLoaded] = useState(false); const [selectedMedia, setSelectedMedia] = useState<HTMLElement | null>(null); const [mediaWidth, setMediaWidth] = useState(100); const [publishAt, setPublishAt] = useState(""); const [reviewStatus, setReviewStatus] = useState("draft"); const [articles, setArticles] = useState<Array<{ id: number; title: string; status: string; review_status?: string | null; updated_at: string }>>([]); const [versions, setVersions] = useState<Array<{ id:number; created_at:string; title:string }>>([]);
+  const [body, setBody] = useState(""); const [cover, setCover] = useState<File | null>(null); const [existingCover, setExistingCover] = useState<string | null>(null); const [coverPreview, setCoverPreview] = useState(""); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false); const [preview, setPreview] = useState(false); const [mobilePreview, setMobilePreview] = useState(false); const [loaded, setLoaded] = useState(false); const [selectedMedia, setSelectedMedia] = useState<HTMLElement | null>(null); const [mediaWidth, setMediaWidth] = useState(100); const [publishAt, setPublishAt] = useState(""); const [reviewStatus, setReviewStatus] = useState("draft"); const [articles, setArticles] = useState<Array<{ id: number; title: string; status: string; review_status?: string | null; updated_at: string }>>([]); const [versions, setVersions] = useState<Array<{ id:number; created_at:string; title:string }>>([]);
   const canvas = useRef<HTMLDivElement>(null); const inlineFile = useRef<HTMLInputElement>(null); const selectionRange = useRef<Range | null>(null); const draggedMedia = useRef<HTMLElement | null>(null); const pointerMove = useRef<((event: PointerEvent) => void) | null>(null); const bodyLoaded = useRef(false); const bodyRef = useRef(""); const activeTextField = useRef<HTMLElement | null>(null); const [editorDirty, setEditorDirty] = useState(0); const editTimer = useRef<number | null>(null);
   const client = () => getSupabase();
 
   const draftKey = `streetscope-material-draft-${isEditing ? articleId : "new"}`;
-  const previewBody = useMemo(() => body || "", [body]);
+  const previewBody = useMemo(() => {
+    if (!body || typeof document === "undefined") return body || "";
+    const documentCopy = document.implementation.createHTMLDocument("preview");
+    documentCopy.body.innerHTML = body;
+    // The editor stores freely positioned blocks for editing. A reader does not
+    // see a canvas: make those blocks regular article content in the preview.
+    documentCopy.querySelectorAll(".text-handle,.media-handle,[data-page-sheet]").forEach(node => node.remove());
+    documentCopy.querySelectorAll<HTMLElement>(".text-block,.free-text").forEach(node => {
+      node.removeAttribute("style");
+      node.removeAttribute("contenteditable");
+      node.classList.add("reader-block");
+    });
+    documentCopy.querySelectorAll<HTMLElement>("figure.inline-media,figure.inline-video").forEach(node => {
+      node.removeAttribute("style");
+      node.dataset.layout = "wide";
+    });
+    return documentCopy.body.innerHTML;
+  }, [body]);
   const hasPreviewContent = Boolean(cleanText(previewBody));
+  useEffect(() => { if (!cover) { setCoverPreview(existingCover || ""); return; } const url = URL.createObjectURL(cover); setCoverPreview(url); return () => URL.revokeObjectURL(url); }, [cover, existingCover]);
   useEffect(() => { const id = Number(new URLSearchParams(window.location.search).get("id")); setArticleId(Number.isFinite(id) && id > 0 ? id : 0); setRouteReady(true); }, []);
   async function loadQueue() { const { data } = await client().from("articles").select("id,title,status,review_status,updated_at").order("updated_at", { ascending: false }).limit(12); setArticles((data as Array<{ id: number; title: string; status: string; review_status?: string | null; updated_at: string }> | null) ?? []); }
   useEffect(() => { if (!routeReady) return; client().auth.getUser().then(async ({ data }) => { const email = data.user?.email?.toLowerCase() || ""; let nextRole:"editor_in_chief"|"deputy_editor_in_chief"|"journalist"|null = null; let nextName=""; if (email) { const {data:staff}=await client().from("staff_accounts").select("active,role,display_name,first_name,last_name").eq("email",email).maybeSingle(); if (staff?.active) { nextRole=staff.role; nextName=[staff.first_name,staff.last_name].filter(Boolean).join(" ")||staff.display_name||""; } } setCurrentEmail(email); setCurrentName(nextName); setRole(nextRole); setAllowed(Boolean(nextRole)); if (!nextRole) { setLoaded(true); return; } await loadQueue(); if (!isEditing) { setLoaded(true); return; } const { data: article } = await client().from("articles").select("title,excerpt,category,body,image_url,social_title,social_description,social_image,published_at,review_status,author_email").eq("id", articleId).single(); if (!article) { setMessage("Nie znaleziono materiału albo nie masz do niego dostępu."); setLoaded(true); return; } setTitle(article.title); setExcerpt(article.excerpt); setCategory(article.category); setBody(article.body || ""); setExistingCover(article.image_url); setSocialTitle(article.social_title || ""); setSocialDescription(article.social_description || ""); setSocialImage(article.social_image || ""); setPublishAt(article.published_at ? new Date(article.published_at).toISOString().slice(0, 16) : ""); setReviewStatus(article.review_status || "draft"); setArticleAuthor(article.author_email || email); setLoaded(true); }); }, [routeReady, articleId]);
