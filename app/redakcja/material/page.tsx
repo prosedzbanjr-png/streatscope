@@ -119,6 +119,11 @@ export default function MaterialPage() {
     }, 0);
     const pages = Math.max(1, Math.ceil((bottom + 140) / pageHeight));
     const totalHeight = pages * pageHeight + (pages - 1) * pageGap;
+    // The sheets are absolutely positioned, so they do not normally add to the
+    // document flow.  Set a real height as well as min-height: this keeps every
+    // control below the canvas (save/publish and text controls) underneath the
+    // final sheet instead of halfway through the last virtual page.
+    root.style.height = `${totalHeight}px`;
     root.style.minHeight = `${totalHeight}px`;
     root.dataset.pages = String(pages);
     for (let index = 0; index < pages; index += 1) {
