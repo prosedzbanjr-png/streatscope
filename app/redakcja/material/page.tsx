@@ -10,6 +10,32 @@ function cleanText(html: string) {
   return html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function turnFreeTextIntoInputs(root: HTMLElement) {
+  root.querySelectorAll<HTMLDivElement>("div.free-text").forEach(field => {
+    const input = document.createElement("textarea");
+    input.className = field.className;
+    input.value = field.textContent || "";
+    input.dataset.placeholder = field.dataset.placeholder || "Kliknij i pisz…";
+    input.placeholder = input.dataset.placeholder;
+    input.setAttribute("aria-label", "Pole tekstowe materiału");
+    input.style.cssText = field.style.cssText;
+    field.replaceWith(input);
+  });
+}
+
+function serializeCanvas(root: HTMLElement) {
+  const copy = root.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll<HTMLTextAreaElement>("textarea.free-text").forEach(input => {
+    const field = document.createElement("div");
+    field.className = input.className;
+    field.dataset.placeholder = input.dataset.placeholder || "Kliknij i pisz…";
+    field.style.cssText = input.style.cssText;
+    field.textContent = input.value;
+    input.replaceWith(field);
+  });
+  return copy.innerHTML;
+}
+
 export default function MaterialPage() {
   const [articleId, setArticleId] = useState(0); const [routeReady, setRouteReady] = useState(false); const isEditing = articleId > 0;
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -23,7 +49,7 @@ export default function MaterialPage() {
   useEffect(() => { const id = Number(new URLSearchParams(window.location.search).get("id")); setArticleId(Number.isFinite(id) && id > 0 ? id : 0); setRouteReady(true); }, []);
   async function loadQueue() { const { data } = await client().from("articles").select("id,title,status,review_status,updated_at").order("updated_at", { ascending: false }).limit(12); setArticles((data as Array<{ id: number; title: string; status: string; review_status?: string | null; updated_at: string }> | null) ?? []); }
   useEffect(() => { if (!routeReady) return; client().auth.getUser().then(async ({ data }) => { const ok = data.user?.email?.toLowerCase() === EDITOR_EMAIL; setAllowed(ok); if (!ok) { setLoaded(true); return; } await loadQueue(); if (!isEditing) { setLoaded(true); return; } const { data: article } = await client().from("articles").select("title,excerpt,category,body,image_url,social_title,social_description,social_image,published_at,review_status").eq("id", articleId).single(); if (!article) { setMessage("Nie znaleziono materiału do edycji."); setLoaded(true); return; } setTitle(article.title); setExcerpt(article.excerpt); setCategory(article.category); setBody(article.body || ""); setExistingCover(article.image_url); setSocialTitle(article.social_title || ""); setSocialDescription(article.social_description || ""); setSocialImage(article.social_image || ""); setPublishAt(article.published_at ? new Date(article.published_at).toISOString().slice(0, 16) : ""); setReviewStatus(article.review_status || "draft"); setLoaded(true); } ); }, [routeReady, articleId]);
-  useEffect(() => { const root = canvas.current; if (!root) return; if (!bodyLoaded.current) { const normalized = body.replace(/\sclass=(['"])\1/g, "").replace(/\sclass=(['"])is-selected\1/g, "").replace(/\sclass=(['"])inline-media is-selected\1/g, ' class="inline-media"'); root.innerHTML = normalized; bodyRef.current = normalized; bodyLoaded.current = true; } root.contentEditable = "false"; root.querySelectorAll("p,h2,h3,blockquote,figcaption").forEach(node => { (node as HTMLElement).contentEditable = "true"; }); }, [body]);
+  useEffect(() => { const root = canvas.current; if (!root) return; if (!bodyLoaded.current) { const normalized = body.replace(/\sclass=(['"])\1/g, "").replace(/\sclass=(['"])is-selected\1/g, "").replace(/\sclass=(['"])inline-media is-selected\1/g, ' class="inline-media"'); root.innerHTML = normalized; turnFreeTextIntoInputs(root); bodyRef.current = normalized; bodyLoaded.current = true; } root.contentEditable = "false"; root.querySelectorAll("p,h2,h3,blockquote,figcaption").forEach(node => { (node as HTMLElement).contentEditable = "true"; }); }, [body]);
   useEffect(() => { const root = canvas.current; if (!root) return; root.querySelectorAll("figure.inline-media").forEach(figure => { if (figure.querySelector("[data-media-handle]")) return; const handle = document.createElement("span"); handle.className = "media-handle"; handle.contentEditable = "false"; handle.draggable = false; handle.dataset.mediaHandle = "true"; handle.setAttribute("role", "button"); handle.setAttribute("aria-label", "Złap i przeciągnij zdjęcie"); handle.title = "Złap i przeciągnij zdjęcie"; handle.textContent = "⠿"; figure.prepend(handle); }); }, [body, selectedMedia]);
   useEffect(() => {
     const toolbar = canvas.current?.parentElement?.querySelector(".material-toolbar");
@@ -38,20 +64,6 @@ export default function MaterialPage() {
   }, [allowed, loaded]);
   useEffect(() => {
     const root = canvas.current; if (!root) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") return;
-      const active = document.activeElement as HTMLElement | null;
-      const field = active?.closest(".free-text") as HTMLElement | null;
-      if (!field || !root.contains(field)) return;
-      event.preventDefault(); event.stopPropagation();
-      const range = document.createRange(); range.selectNodeContents(field);
-      const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
-    };
-    root.addEventListener("keydown", onKeyDown);
-    return () => root.removeEventListener("keydown", onKeyDown);
-  }, [loaded]);
-  useEffect(() => {
-    const root = canvas.current; if (!root) return;
     const rememberField = (event: FocusEvent) => { const field = (event.target as HTMLElement).closest(".free-text,p,h2,h3,blockquote,figcaption") as HTMLElement | null; if (field && root.contains(field)) activeTextField.current = field; };
     root.addEventListener("focusin", rememberField);
     return () => root.removeEventListener("focusin", rememberField);
@@ -59,9 +71,10 @@ export default function MaterialPage() {
   useEffect(() => { if (!allowed || !loaded) return; const timer = window.setTimeout(() => { const content = { title, excerpt, category, body, socialTitle, socialDescription, socialImage, savedAt: new Date().toISOString() }; if (title || excerpt || body) { localStorage.setItem(draftKey, JSON.stringify(content)); setMessage("Szkic zapisany automatycznie."); } }, 900); return () => window.clearTimeout(timer); }, [title, excerpt, category, body, socialTitle, socialDescription, socialImage, allowed, loaded]);
   useEffect(() => { if (!allowed || !loaded || isEditing) return; const raw = localStorage.getItem(draftKey); if (!raw) return; try { const saved = JSON.parse(raw); if ((saved.title || saved.body) && window.confirm("Przywrócić automatycznie zapisany szkic?")) { setTitle(saved.title || ""); setExcerpt(saved.excerpt || ""); setCategory(saved.category || "AKTUALNOŚCI"); setBody(saved.body || ""); setSocialTitle(saved.socialTitle || ""); setSocialDescription(saved.socialDescription || ""); setSocialImage(saved.socialImage || ""); } } catch {} }, [allowed, loaded]);
 
-  function syncBody() { const root = canvas.current; if (!root) { bodyRef.current = ""; return; } root.querySelectorAll(".is-selected,.is-dragging,.drop-before,.drop-after").forEach(node => node.classList.remove("is-selected", "is-dragging", "drop-before", "drop-after")); bodyRef.current = root.innerHTML; }
-  function commitBodyForPreview() { const html = canvas.current?.innerHTML ?? bodyRef.current; bodyRef.current = html; setBody(html); }
+  function syncBody() { const root = canvas.current; if (!root) { bodyRef.current = ""; return; } root.querySelectorAll(".is-selected,.is-dragging,.drop-before,.drop-after").forEach(node => node.classList.remove("is-selected", "is-dragging", "drop-before", "drop-after")); bodyRef.current = serializeCanvas(root); }
+  function commitBodyForPreview() { const html = canvas.current ? serializeCanvas(canvas.current) : bodyRef.current; bodyRef.current = html; setBody(html); }
   function pastePlainText(event: ClipboardEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("textarea.free-text")) return;
     const text = event.clipboardData.getData("text/plain");
     if (!text) return;
     event.preventDefault();
@@ -102,7 +115,7 @@ export default function MaterialPage() {
   function addTextBlock() {
     const root = canvas.current;
     if (!root) return;
-    const box = root.getBoundingClientRect(); const text = document.createElement("div"); text.className = "free-text"; text.contentEditable = "true"; text.dataset.placeholder = "Kliknij i pisz…"; text.tabIndex = 0; text.style.left = `${Math.max(18, Math.min(box.width - 240, 40))}px`; text.style.top = `${Math.max(18, root.scrollTop + 40)}px`; text.style.fontFamily = "Arial, sans-serif"; text.style.fontSize = "16px"; text.style.lineHeight = "1.35"; text.append(document.createElement("br")); root.append(text);
+    const box = root.getBoundingClientRect(); const text = document.createElement("textarea"); text.className = "free-text"; text.dataset.placeholder = "Kliknij i pisz…"; text.placeholder = text.dataset.placeholder; text.setAttribute("aria-label", "Pole tekstowe materiału"); text.style.left = `${Math.max(18, Math.min(box.width - 240, 40))}px`; text.style.top = `${Math.max(18, root.scrollTop + 40)}px`; text.style.fontFamily = "Arial, sans-serif"; text.style.fontSize = "16px"; text.style.lineHeight = "1.35"; root.append(text);
     activeTextField.current = text;
     const cursor = document.createRange(); cursor.setStart(text, 0); cursor.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(cursor); text.focus({ preventScroll: true }); saveCaret(); syncBody();
   }
@@ -112,7 +125,7 @@ export default function MaterialPage() {
   function dragOver(event: React.DragEvent<HTMLDivElement>) { event.preventDefault(); }
   function dropMedia(event: React.DragEvent<HTMLDivElement>) { event.preventDefault(); }
   function moveAt(x: number, y: number) { const root = canvas.current; const dragged = draggedMedia.current; if (!root || !dragged) return; root.querySelectorAll(".drop-before,.drop-after").forEach(node => node.classList.remove("drop-before", "drop-after")); const destination = blockAtPoint(x, y); if (destination && destination !== dragged) { const box = destination.getBoundingClientRect(); destination.classList.add(y < box.top + box.height / 2 ? "drop-before" : "drop-after"); return; } const rootBox = root.getBoundingClientRect(); root.classList.add("free-drop-active"); root.style.setProperty("--drop-x", `${Math.max(0, Math.min(rootBox.width - 34, x - rootBox.left))}px`); root.style.setProperty("--drop-y", `${Math.max(0, y - rootBox.top)}px`); }
-  function startPointerMove(event: React.PointerEvent<HTMLDivElement>) { const target = event.target as HTMLElement; if (!target.closest("[data-media-handle]")) return; const media = target.closest("figure.inline-media") as HTMLElement | null; if (!media) return; event.preventDefault(); event.stopPropagation(); draggedMedia.current = media; media.classList.add("is-dragging"); const move = (pointer: PointerEvent) => moveAt(pointer.clientX, pointer.clientY); const end = (pointer: PointerEvent) => { const root = canvas.current; const dragged = draggedMedia.current; if (root && dragged) { const destination = blockAtPoint(pointer.clientX, pointer.clientY); if (destination && destination !== dragged) { const box = destination.getBoundingClientRect(); root.insertBefore(dragged, pointer.clientY < box.top + box.height / 2 ? destination : destination.nextSibling); dragged.style.removeProperty("margin-top"); dragged.style.removeProperty("margin-left"); } else { const rootBox = root.getBoundingClientRect(); const currentBox = dragged.getBoundingClientRect(); const maxLeft = Math.max(0, rootBox.width - currentBox.width - 24); const left = Math.max(0, Math.min(maxLeft, pointer.clientX - rootBox.left - currentBox.width / 2)); const targetTop = Math.max(0, pointer.clientY - rootBox.top - 22); const ownTop = Math.max(0, currentBox.top - rootBox.top); const extraTop = Math.max(0, targetTop - ownTop); dragged.style.marginLeft = `${Math.round(left)}px`; dragged.style.marginTop = `${Math.round(28 + extraTop)}px`; dragged.style.marginRight = "0"; dragged.dataset.layout = "free"; } root.classList.remove("free-drop-active"); root.style.removeProperty("--drop-x"); root.style.removeProperty("--drop-y"); bodyRef.current = root.innerHTML; setSelectedMedia(dragged); } dragEnd(); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); }; pointerMove.current = move; window.addEventListener("pointermove", move); window.addEventListener("pointerup", end, { once: true }); }
+  function startPointerMove(event: React.PointerEvent<HTMLDivElement>) { const target = event.target as HTMLElement; if (!target.closest("[data-media-handle]")) return; const media = target.closest("figure.inline-media") as HTMLElement | null; if (!media) return; event.preventDefault(); event.stopPropagation(); draggedMedia.current = media; media.classList.add("is-dragging"); const move = (pointer: PointerEvent) => moveAt(pointer.clientX, pointer.clientY); const end = (pointer: PointerEvent) => { const root = canvas.current; const dragged = draggedMedia.current; if (root && dragged) { const destination = blockAtPoint(pointer.clientX, pointer.clientY); if (destination && destination !== dragged) { const box = destination.getBoundingClientRect(); root.insertBefore(dragged, pointer.clientY < box.top + box.height / 2 ? destination : destination.nextSibling); dragged.style.removeProperty("margin-top"); dragged.style.removeProperty("margin-left"); } else { const rootBox = root.getBoundingClientRect(); const currentBox = dragged.getBoundingClientRect(); const maxLeft = Math.max(0, rootBox.width - currentBox.width - 24); const left = Math.max(0, Math.min(maxLeft, pointer.clientX - rootBox.left - currentBox.width / 2)); const targetTop = Math.max(0, pointer.clientY - rootBox.top - 22); const ownTop = Math.max(0, currentBox.top - rootBox.top); const extraTop = Math.max(0, targetTop - ownTop); dragged.style.marginLeft = `${Math.round(left)}px`; dragged.style.marginTop = `${Math.round(28 + extraTop)}px`; dragged.style.marginRight = "0"; dragged.dataset.layout = "free"; } root.classList.remove("free-drop-active"); root.style.removeProperty("--drop-x"); root.style.removeProperty("--drop-y"); bodyRef.current = serializeCanvas(root); setSelectedMedia(dragged); } dragEnd(); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); }; pointerMove.current = move; window.addEventListener("pointermove", move); window.addEventListener("pointerup", end, { once: true }); }
   function updateMedia(layout: "wide" | "left" | "right" | "small") {
     if (!selectedMedia) return;
     selectedMedia.dataset.layout = layout;
@@ -150,7 +163,7 @@ export default function MaterialPage() {
     } catch { setMessage("Nie udało się przesłać zdjęcia do treści."); } finally { event.target.value = ""; }
   }
   async function save(event: FormEvent, status: "draft" | "published") {
-    event.preventDefault(); const currentBody = canvas.current?.innerHTML ?? bodyRef.current; bodyRef.current = currentBody; const text = cleanText(currentBody);
+    event.preventDefault(); const currentBody = canvas.current ? serializeCanvas(canvas.current) : bodyRef.current; bodyRef.current = currentBody; const text = cleanText(currentBody);
     if (title.trim().length < 6 || excerpt.trim().length < 30 || text.length < 80) { setMessage("Tytuł, zajawka i treść muszą być uzupełnione."); return; }
     setBusy(true); setMessage("");
     try {
