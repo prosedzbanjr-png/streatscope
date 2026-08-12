@@ -35,6 +35,12 @@ export default function MaterialPage() {
     font.addEventListener("change", () => { if (font.value) command("fontName", font.value); }); size.addEventListener("change", () => { if (size.value) command("fontSize", size.value); }); color.addEventListener("change", () => command("foreColor", color.value));
     wrap.append(font, size, colorLabel); toolbar.append(wrap);
   }, [allowed, loaded]);
+  useEffect(() => {
+    const root = canvas.current; if (!root) return;
+    const onCanvasClick = (event: globalThis.MouseEvent) => createParagraphAtClick(event as unknown as MouseEvent<HTMLDivElement>);
+    root.addEventListener("click", onCanvasClick);
+    return () => root.removeEventListener("click", onCanvasClick);
+  }, [loaded]);
   useEffect(() => { if (!allowed || !loaded) return; const timer = window.setTimeout(() => { const content = { title, excerpt, category, body, socialTitle, socialDescription, socialImage, savedAt: new Date().toISOString() }; if (title || excerpt || body) { localStorage.setItem(draftKey, JSON.stringify(content)); setMessage("Szkic zapisany automatycznie."); } }, 900); return () => window.clearTimeout(timer); }, [title, excerpt, category, body, socialTitle, socialDescription, socialImage, allowed, loaded]);
   useEffect(() => { if (!allowed || !loaded || isEditing) return; const raw = localStorage.getItem(draftKey); if (!raw) return; try { const saved = JSON.parse(raw); if ((saved.title || saved.body) && window.confirm("Przywrócić automatycznie zapisany szkic?")) { setTitle(saved.title || ""); setExcerpt(saved.excerpt || ""); setCategory(saved.category || "AKTUALNOŚCI"); setBody(saved.body || ""); setSocialTitle(saved.socialTitle || ""); setSocialDescription(saved.socialDescription || ""); setSocialImage(saved.socialImage || ""); } } catch {} }, [allowed, loaded]);
 
@@ -71,6 +77,16 @@ export default function MaterialPage() {
   }
   function selectMedia(event: MouseEvent<HTMLDivElement>) { const target = event.target as HTMLElement; const media = target.closest("figure.inline-media") as HTMLElement | null; canvas.current?.querySelectorAll("figure.inline-media.is-selected").forEach(item => item.classList.remove("is-selected")); if (!media) { setSelectedMedia(null); saveCaret(); return; } media.classList.add("is-selected"); setSelectedMedia(media); setMediaWidth(Number.parseInt(media.dataset.width || "100", 10) || 100); }
   function clearMediaSelection(event: React.PointerEvent<HTMLDivElement>) { const target = event.target as HTMLElement; if (target.closest("figure.inline-media")) return; canvas.current?.querySelectorAll("figure.inline-media.is-selected").forEach(item => item.classList.remove("is-selected")); setSelectedMedia(null); }
+  function createParagraphAtClick(event: MouseEvent<HTMLDivElement>) {
+    const root = canvas.current; const target = event.target as HTMLElement;
+    if (!root || target.closest("figure.inline-media,figure.inline-video,figcaption,p,h2,h3,blockquote,li,a")) return;
+    const point = document.caretPositionFromPoint?.(event.clientX, event.clientY);
+    const legacy = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(event.clientX, event.clientY);
+    const range = legacy ?? (() => { if (!point) return null; const next = document.createRange(); next.setStart(point.offsetNode, point.offset); next.collapse(true); return next; })();
+    const paragraph = document.createElement("p"); paragraph.append(document.createElement("br"));
+    if (range && root.contains(range.startContainer)) { range.insertNode(paragraph); } else { root.append(paragraph); }
+    const cursor = document.createRange(); cursor.setStart(paragraph, 0); cursor.collapse(true); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(cursor); root.focus(); saveCaret(); syncBody();
+  }
   function dragStart(event: React.DragEvent<HTMLDivElement>) { event.preventDefault(); }
   function dragEnd() { canvas.current?.querySelectorAll(".is-dragging,.drop-before,.drop-after").forEach(node => node.classList.remove("is-dragging", "drop-before", "drop-after")); draggedMedia.current = null; }
   function blockAtPoint(x: number, y: number) { const root = canvas.current; if (!root) return null; const pointed = document.elementFromPoint(x, y) as HTMLElement | null; const direct = pointed?.closest("p,h2,h3,blockquote,figure.inline-media,figure.inline-video") as HTMLElement | null; if (direct && root.contains(direct)) return direct; const legacy = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }).caretRangeFromPoint?.(x, y); const modern = document.caretPositionFromPoint?.(x, y); const node = legacy?.startContainer ?? modern?.offsetNode ?? null; const element = node instanceof Element ? node : node?.parentElement; const fromCaret = element?.closest("p,h2,h3,blockquote,figure.inline-media,figure.inline-video") as HTMLElement | null; return fromCaret && root.contains(fromCaret) ? fromCaret : null; }
