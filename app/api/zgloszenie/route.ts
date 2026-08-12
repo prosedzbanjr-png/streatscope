@@ -5,6 +5,7 @@ const safe = (value: unknown, max: number) => typeof value === "string" ? value.
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
+    if (safe(payload.website, 200)) return NextResponse.json({ ok: true });
     const title = safe(payload.title, 256); const district = safe(payload.district, 80) || "Nie podano"; const description = safe(payload.description, 4000); const contact = safe(payload.contact, 256);
     if (title.length < 6 || description.length < 30) return NextResponse.json({ error: "Nieprawidłowe zgłoszenie." }, { status: 400 });
 
