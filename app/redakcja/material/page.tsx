@@ -85,8 +85,14 @@ export default function MaterialPage() {
       if (target.closest(".free-text,figure.inline-media,figure.inline-video,figcaption,button,input,select,a")) return;
       event.preventDefault();
     };
+    const stopLabelMouseDown = (event: globalThis.MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest(".free-text,figure.inline-media,figure.inline-video,figcaption,button,input,select,a")) return;
+      event.preventDefault();
+    };
+    root.addEventListener("mousedown", stopLabelMouseDown, true);
     root.addEventListener("click", stopLabelActivation);
-    return () => root.removeEventListener("click", stopLabelActivation);
+    return () => { root.removeEventListener("mousedown", stopLabelMouseDown, true); root.removeEventListener("click", stopLabelActivation); };
   }, [loaded]);
   useEffect(() => { if (!allowed || !loaded) return; const timer = window.setTimeout(() => { const currentBody = bodyRef.current || body; const content = { title, excerpt, category, body: currentBody, socialTitle, socialDescription, socialImage, savedAt: new Date().toISOString() }; if (title || excerpt || currentBody) { localStorage.setItem(draftKey, JSON.stringify(content)); setMessage("Szkic zapisany automatycznie."); } }, 900); return () => window.clearTimeout(timer); }, [title, excerpt, category, body, socialTitle, socialDescription, socialImage, allowed, loaded, editorDirty]);
   useEffect(() => { if (!allowed || !loaded || isEditing) return; const raw = localStorage.getItem(draftKey); if (!raw) return; try { const saved = JSON.parse(raw); if ((saved.title || saved.body) && window.confirm("Przywrócić automatycznie zapisany szkic?")) { setTitle(saved.title || ""); setExcerpt(saved.excerpt || ""); setCategory(saved.category || "AKTUALNOŚCI"); setBody(saved.body || ""); setSocialTitle(saved.socialTitle || ""); setSocialDescription(saved.socialDescription || ""); setSocialImage(saved.socialImage || ""); } } catch {} }, [allowed, loaded]);
@@ -115,16 +121,16 @@ export default function MaterialPage() {
   function saveCaret() { const selection = window.getSelection(); if (selection?.rangeCount) selectionRange.current = selection.getRangeAt(0).cloneRange(); }
   function restoreCaret() { const selection = window.getSelection(); if (selectionRange.current && selection) { selection.removeAllRanges(); selection.addRange(selectionRange.current); } }
   function hasSelectedText() { const selection = window.getSelection(); return Boolean(selection?.rangeCount && !selection.getRangeAt(0).collapsed && selection.toString().trim()); }
+  function restoreAndHasSelectedText() { restoreCaret(); return hasSelectedText(); }
   function command(name: string, value?: string) { restoreCaret(); document.execCommand(name, false, value); saveCaret(); syncBody(); }
-  function setFont(font: string) { const field = activeTextField.current; if (hasSelectedText() && font !== "default") { command("fontName", font); return; } if (field && font) { field.style.fontFamily = font; syncBody(); return; } if (font !== "default") command("fontName", font); }
+  function setFont(font: string) { const field = activeTextField.current; if (restoreAndHasSelectedText() && font !== "default") { document.execCommand("fontName", false, font); saveCaret(); syncBody(); return; } if (field && font) { field.style.fontFamily = font; syncBody(); return; } if (font !== "default") command("fontName", font); }
   function setFontSize(size: string) { if (size !== "default") command("fontSize", size); }
   function setTextPixelSize(size: number) {
-    const field = activeTextField.current; const fixed = Math.max(1, Math.min(100, size)); if (field && !hasSelectedText()) { field.style.fontSize = `${fixed}px`; syncBody(); return; }
-    const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const span = document.createElement("span"); span.style.fontSize = `${fixed}px`;
+    const field = activeTextField.current; const fixed = Math.max(1, Math.min(100, size)); const root = canvas.current; const selection = window.getSelection(); if (!root || !selection) return; restoreCaret(); if (!selection.rangeCount) return; const range = selection.getRangeAt(0); const selected = !range.collapsed && selection.toString().trim().length > 0; if (field && !selected) { field.style.fontSize = `${fixed}px`; syncBody(); return; } const span = document.createElement("span"); span.style.fontSize = `${fixed}px`;
     if (range.collapsed) { span.append(document.createTextNode("\u200b")); range.insertNode(span); const cursor = document.createRange(); cursor.setStart(span.firstChild!, 1); cursor.collapse(true); selection.removeAllRanges(); selection.addRange(cursor); } else { try { range.surroundContents(span); } catch { const fragment = range.extractContents(); span.append(fragment); range.insertNode(span); } }
     saveCaret(); syncBody();
   }
-  function setTextColor(color: string) { const field = activeTextField.current; if (hasSelectedText()) { command("foreColor", color); return; } if (field) { field.style.color = color; syncBody(); return; } command("foreColor", color); }
+  function setTextColor(color: string) { const field = activeTextField.current; if (restoreAndHasSelectedText()) { document.execCommand("foreColor", false, color); saveCaret(); syncBody(); return; } if (field) { field.style.color = color; syncBody(); return; } command("foreColor", color); }
   function addLink() { const link = window.prompt("Wklej adres linku:"); if (link) command("createLink", link); }
   function youtubeEmbedUrl(url: string) { try { const parsed = new URL(url); const id = parsed.hostname.includes("youtu.be") ? parsed.pathname.slice(1) : parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).pop(); return id ? `https://www.youtube-nocookie.com/embed/${id.replace(/[^a-zA-Z0-9_-]/g, "")}` : null; } catch { return null; } }
   function insertVideo() {
