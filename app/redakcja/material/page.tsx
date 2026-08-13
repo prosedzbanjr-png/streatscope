@@ -107,6 +107,14 @@ export default function MaterialPage() {
       delete node.dataset.readerX; delete node.dataset.readerY; delete node.dataset.readerWidth; delete node.dataset.readerHeight;
       node.style.removeProperty("position"); node.style.removeProperty("left"); node.style.removeProperty("top"); node.style.removeProperty("width"); node.style.removeProperty("min-height"); node.style.removeProperty("margin");
     });
+    // Older drafts may not carry the data attributes at all, but can still
+    // contain their broken absolute layout inline. Text is always document
+    // flow unless it lives inside a deliberately movable text block.
+    documentCopy.querySelectorAll<HTMLElement>("p,h2,h3,blockquote,ul,ol").forEach(node => {
+      if (node.closest(".text-block")) return;
+      ["position", "left", "right", "top", "bottom", "width", "height", "min-height", "max-height", "margin", "margin-left", "margin-right", "margin-top", "margin-bottom", "float", "clear", "transform"].forEach(property => node.style.removeProperty(property));
+      delete node.dataset.readerX; delete node.dataset.readerY; delete node.dataset.readerWidth; delete node.dataset.readerHeight;
+    });
     documentCopy.querySelectorAll<HTMLElement>(".article-layout[data-canvas-height]").forEach(node => {
       node.style.minHeight = `${node.dataset.canvasHeight || "980"}px`;
     });
