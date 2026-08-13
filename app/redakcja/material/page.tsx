@@ -41,6 +41,11 @@ function serializeCanvas(root: HTMLElement) {
   sourceChildren.forEach((source, index) => {
     const target = copyChildren[index] as HTMLElement | undefined;
     if (!target) return;
+    // Normal paragraphs are document flow. Saving their pixel coordinates turns
+    // a long article into a pile of overlapping absolutely positioned lines.
+    // Only deliberately movable editor elements need coordinates.
+    const isFreeElement = source.classList.contains("text-block") || source.matches("figure.inline-media,figure.inline-video");
+    if (!isFreeElement) return;
     const box = source.getBoundingClientRect();
     target.dataset.readerX = String(Math.max(0, Math.round(box.left - rootBox.left)));
     const rawY = Math.max(0, Math.round(box.top - rootBox.top));
@@ -95,6 +100,12 @@ export default function MaterialPage() {
       node.style.width = `${node.dataset.readerWidth || "1"}px`;
       node.style.minHeight = `${node.dataset.readerHeight || "1"}px`;
       node.style.margin = "0";
+    });
+    // Compatibility for materials saved by the broken preview: restore normal
+    // article flow for headings and paragraphs that accidentally got coordinates.
+    documentCopy.querySelectorAll<HTMLElement>("p[data-reader-x],h2[data-reader-x],h3[data-reader-x],blockquote[data-reader-x],ul[data-reader-x],ol[data-reader-x]").forEach(node => {
+      delete node.dataset.readerX; delete node.dataset.readerY; delete node.dataset.readerWidth; delete node.dataset.readerHeight;
+      node.style.removeProperty("position"); node.style.removeProperty("left"); node.style.removeProperty("top"); node.style.removeProperty("width"); node.style.removeProperty("min-height"); node.style.removeProperty("margin");
     });
     documentCopy.querySelectorAll<HTMLElement>(".article-layout[data-canvas-height]").forEach(node => {
       node.style.minHeight = `${node.dataset.canvasHeight || "980"}px`;
