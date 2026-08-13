@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getSupabase } from "../lib/supabase";
 
 type Story = {
@@ -57,7 +57,6 @@ export function HomeNewsBoard() {
     return () => { cancelled = true; };
   }, []);
 
-
   if (loading) return <section className="home-loading" aria-label="Ładowanie najnowszych materiałów">
     <div className="skeleton skeleton-hero" />
     <div className="skeleton-side">
@@ -69,12 +68,9 @@ export function HomeNewsBoard() {
   </section>;
 
   const hero = stories[0] ?? fallback[0];
-  const quick = useMemo(() => stories.slice(1, 6), [stories]);
-  const cards = useMemo(() => {
-    const rest = stories.slice(1, 5);
-    return rest.length >= 4 ? rest : [...rest, ...fallback].slice(0, 4);
-  }, [stories]);
-
+  const quick = stories.slice(1, 6);
+  const rest = stories.slice(1, 5);
+  const cards = rest.length >= 4 ? rest : [...rest, ...fallback].slice(0, 4);
   const heroHref = hero.id ? `/artykul/${hero.id}` : "/wiadomosci";
   const hasQuick = quick.length > 0;
 
