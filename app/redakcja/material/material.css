@@ -24,3 +24,17 @@
 .material-preview .article-layout>p,.material-preview .article-layout>h2,.material-preview .article-layout>h3,.material-preview .article-layout>blockquote,.material-preview .article-layout>ul,.material-preview .article-layout>ol{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;width:auto!important;height:auto!important;min-height:0!important;max-height:none!important;float:none!important;clear:both!important;transform:none!important;margin:0 0 28px!important}
 
 .review-feedback{border:1px solid #e52425;background:rgba(229,36,37,.08);padding:16px 18px;margin:14px 0 20px}.review-feedback b{color:#e52425;letter-spacing:.08em;font-size:12px}.review-feedback p{margin:8px 0;color:#fff}.review-feedback small{opacity:.65}
+
+/* ETAP 31 — spokojniejszy edytor, brak nachodzenia nagłówków na formularz */
+.material-page header{height:68px!important;padding:0 5vw!important}
+.material-layout{grid-template-columns:minmax(220px,330px) minmax(0,1fr)!important;gap:42px!important;max-width:1540px!important;padding:55px 5vw 90px!important;align-items:start}
+.material-intro{position:static!important;min-width:0}
+.material-intro h1{font-family:'Roboto Condensed',Arial,sans-serif!important;font-size:clamp(44px,5vw,72px)!important;line-height:.9!important;letter-spacing:-.045em!important;margin:12px 0 20px!important;overflow-wrap:anywhere}
+.material-intro>p:not(.kicker){font-family:'Inter',Arial,sans-serif!important;font-size:15px!important;line-height:1.55!important;max-width:300px!important}
+.material-form{min-width:0;padding:28px!important;gap:18px!important}
+.material-form input,.material-form select{font-family:'Inter',Arial,sans-serif!important;font-size:14px!important}
+.material-canvas{font-family:'Inter',Arial,sans-serif!important;font-size:17px!important;line-height:1.7!important;padding:30px 6%!important;min-height:640px!important}
+.material-canvas h2{font-family:'Roboto Condensed',Arial,sans-serif!important;font-size:34px!important}.material-canvas h3{font-family:'Roboto Condensed',Arial,sans-serif!important;font-size:27px!important}
+.preview-toggle{margin-top:20px!important}
+.material-preview article>h1{font-size:clamp(42px,5vw,72px)!important;line-height:.94!important}.material-preview .lead{font-size:clamp(19px,2vw,27px)!important}
+@media(max-width:900px){.material-layout{display:block!important;padding:45px 6vw 75px!important}.material-intro{margin-bottom:30px!important}.material-intro h1{font-size:58px!important}.material-form{padding:20px!important}.material-canvas{min-height:520px!important;padding:22px!important}}
