@@ -9,9 +9,9 @@ export default function DolaczPage() {
   const [tone, setTone] = useState<"ok" | "error" | "">("");
   const startedAt = useRef(Date.now());
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setMessage(""); setTone("");
+    event.preventDefault(); const formElement = event.currentTarget; setBusy(true); setMessage(""); setTone("");
     try {
-      const form = new FormData(event.currentTarget);
+      const form = new FormData(formElement);
       const lastSent = Number(localStorage.getItem("streetscope-recruitment-last-sent") || 0);
       const remaining = 10 * 60 * 1000 - (Date.now() - lastSent);
       if (remaining > 0) { setMessage(`Kolejne zgłoszenie możesz wysłać za ${Math.ceil(remaining / 60000)} min.`); setTone("error"); return; }
@@ -20,7 +20,7 @@ export default function DolaczPage() {
       const response = await fetch("/api/rekrutacja", { method: "POST", body: form, signal: controller.signal });
       window.clearTimeout(timeout);
       const result = await response.json().catch(() => ({}));
-      if (response.ok) { localStorage.setItem("streetscope-recruitment-last-sent", String(Date.now())); event.currentTarget.reset(); startedAt.current = Date.now(); setMessage("Zgłoszenie trafiło do redakcji. Odezniemy się, jeśli będziemy chcieli porozmawiać."); setTone("ok"); }
+      if (response.ok) { localStorage.setItem("streetscope-recruitment-last-sent", String(Date.now())); formElement.reset(); startedAt.current = Date.now(); setMessage("Zgłoszenie trafiło do redakcji. Odezniemy się, jeśli będziemy chcieli porozmawiać."); setTone("ok"); }
       else { setMessage(result.error || "Nie udało się wysłać zgłoszenia."); setTone("error"); }
     } catch (error) { setMessage(error instanceof DOMException && error.name === "AbortError" ? "Serwer odpowiada zbyt długo. Spróbuj ponownie." : "Brak połączenia z formularzem. Spróbuj ponownie później."); setTone("error"); }
     finally { setBusy(false); }

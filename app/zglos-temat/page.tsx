@@ -9,9 +9,9 @@ export default function ZglosTematPage() {
   const [tone, setTone] = useState<"ok" | "error" | "">("");
   const startedAt = useRef(Date.now());
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setMessage(""); setTone("");
+    event.preventDefault(); const formElement = event.currentTarget; setBusy(true); setMessage(""); setTone("");
     try {
-      const form = new FormData(event.currentTarget);
+      const form = new FormData(formElement);
       const lastSent = Number(localStorage.getItem("streetscope-tip-last-sent") ?? 0);
       const waitMs = 10 * 60 * 1000 - (Date.now() - lastSent);
       if (waitMs > 0) { setMessage(`Kolejne zgłoszenie możesz wysłać za ${Math.ceil(waitMs / 60000)} min.`); setTone("error"); return; }
@@ -19,7 +19,7 @@ export default function ZglosTematPage() {
       const response = await fetch("/api/zgloszenie", { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify({ title: form.get("title"), district: form.get("district"), description: form.get("description"), contact: form.get("contact"), website: form.get("website"), startedAt: startedAt.current }) });
       window.clearTimeout(timeout);
       const result = await response.json().catch(() => ({}));
-      if (response.ok) { localStorage.setItem("streetscope-tip-last-sent", String(Date.now())); event.currentTarget.reset(); startedAt.current = Date.now(); setMessage("Zgłoszenie wysłane do redakcji."); setTone("ok"); }
+      if (response.ok) { localStorage.setItem("streetscope-tip-last-sent", String(Date.now())); formElement.reset(); startedAt.current = Date.now(); setMessage("Zgłoszenie wysłane do redakcji."); setTone("ok"); }
       else { setMessage(result.error || (response.status === 429 ? "Za dużo prób. Spróbuj ponownie za kilka minut." : "Nie udało się wysłać zgłoszenia. Spróbuj ponownie później.")); setTone("error"); }
     } catch (error) { setMessage(error instanceof DOMException && error.name === "AbortError" ? "Serwer odpowiada zbyt długo. Spróbuj ponownie." : "Brak połączenia z formularzem. Spróbuj ponownie później."); setTone("error"); }
     finally { setBusy(false); }
