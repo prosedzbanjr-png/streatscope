@@ -2,6 +2,7 @@
 
 import { ChangeEvent, ClipboardEvent, FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getSupabase } from "../../../lib/supabase";
+import { toReaderArticleHtml } from "../../../lib/sanitize-html";
 import "./material.css";
 
 const EDITOR_EMAIL = "kujalowicze@gmail.com";
@@ -74,51 +75,7 @@ export default function MaterialPage() {
   const draftKey = `streetscope-material-draft-${isEditing ? articleId : "new"}`;
   const previewBody = useMemo(() => {
     if (!body || typeof document === "undefined") return body || "";
-    const documentCopy = document.implementation.createHTMLDocument("preview");
-    documentCopy.body.innerHTML = body;
-    // Keep the authored layout. The preview must be a faithful reader version
-    // of the canvas, not a separate column-based interpretation of it.
-    documentCopy.querySelectorAll(".text-handle,.media-handle,[data-page-sheet]").forEach(node => node.remove());
-    documentCopy.querySelectorAll<HTMLElement>(".free-text").forEach(node => {
-      node.removeAttribute("contenteditable");
-    });
-    documentCopy.querySelectorAll<HTMLElement>("figure.inline-media,figure.inline-video").forEach(node => {
-      // The canvas uses inline sizes and margins when an element was dragged.
-      // Copy them to CSS variables so preview rules cannot accidentally reset
-      // the placement to a full-width image.
-      const style = node.style;
-      style.setProperty("--reader-width", `${node.dataset.readerWidth || node.offsetWidth || 1}px`);
-      if (style.marginLeft) style.setProperty("--reader-margin-left", style.marginLeft);
-      if (style.marginRight) style.setProperty("--reader-margin-right", style.marginRight);
-      if (style.marginTop) style.setProperty("--reader-margin-top", style.marginTop);
-      if (style.marginBottom) style.setProperty("--reader-margin-bottom", style.marginBottom);
-    });
-    documentCopy.querySelectorAll<HTMLElement>("[data-reader-x]").forEach(node => {
-      node.style.position = "absolute";
-      node.style.left = `${node.dataset.readerX || "0"}px`;
-      node.style.top = `${node.dataset.readerY || "0"}px`;
-      node.style.width = `${node.dataset.readerWidth || "1"}px`;
-      node.style.minHeight = `${node.dataset.readerHeight || "1"}px`;
-      node.style.margin = "0";
-    });
-    // Compatibility for materials saved by the broken preview: restore normal
-    // article flow for headings and paragraphs that accidentally got coordinates.
-    documentCopy.querySelectorAll<HTMLElement>("p[data-reader-x],h2[data-reader-x],h3[data-reader-x],blockquote[data-reader-x],ul[data-reader-x],ol[data-reader-x]").forEach(node => {
-      delete node.dataset.readerX; delete node.dataset.readerY; delete node.dataset.readerWidth; delete node.dataset.readerHeight;
-      node.style.removeProperty("position"); node.style.removeProperty("left"); node.style.removeProperty("top"); node.style.removeProperty("width"); node.style.removeProperty("min-height"); node.style.removeProperty("margin");
-    });
-    // Older drafts may not carry the data attributes at all, but can still
-    // contain their broken absolute layout inline. Text is always document
-    // flow unless it lives inside a deliberately movable text block.
-    documentCopy.querySelectorAll<HTMLElement>("p,h2,h3,blockquote,ul,ol").forEach(node => {
-      if (node.closest(".text-block")) return;
-      ["position", "left", "right", "top", "bottom", "width", "height", "min-height", "max-height", "margin", "margin-left", "margin-right", "margin-top", "margin-bottom", "float", "clear", "transform"].forEach(property => node.style.removeProperty(property));
-      delete node.dataset.readerX; delete node.dataset.readerY; delete node.dataset.readerWidth; delete node.dataset.readerHeight;
-    });
-    documentCopy.querySelectorAll<HTMLElement>(".article-layout[data-canvas-height]").forEach(node => {
-      node.style.minHeight = `${node.dataset.canvasHeight || "980"}px`;
-    });
-    return documentCopy.body.innerHTML;
+    return toReaderArticleHtml(body);
   }, [body]);
   const hasPreviewContent = Boolean(cleanText(previewBody));
   const previewUsesCanvasLayout = /(?:class=(?:"[^"]*\btext-block\b|\'[^\']*\btext-block\b)|data-layout=(?:"free"|\'free\'))/i.test(previewBody);
