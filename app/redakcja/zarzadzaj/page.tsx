@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "../../../lib/supabase";
+import { logActivity } from "../../../lib/activity-log";
 import "./manage.css";
 
-const CHIEF = "kujalowicze@gmail.com";
 type Tip = { id:number; title:string; district:string; description:string; contact:string|null; status:string; created_at:string; archived_at:string|null; archived_by:string|null };
 type Review = { id:number; title:string; excerpt:string; category:string; author_email:string; updated_at:string; review_note:string|null };
 
@@ -61,7 +61,7 @@ export default function ZarzadzajPage() {
       : {status, archived_at:null, archived_by:null};
     const {error}=await client().from("tips").update(update).eq("id",id);
     setMessage(error?error.message:status === "archived" ? "Zgłoszenie przeniesiono do archiwum." : "Status zgłoszenia zapisany.");
-    if(!error) await load();
+    if(!error){const tip=tips.find(item=>item.id===id);await logActivity({actorEmail:currentEmail,action:status==="archived"?"tip_archived":"tip_status_changed",entityType:"tip",entityId:id,entityLabel:tip?.title||`Zgłoszenie #${id}`,details:{status}});await load();}
   }
 
   async function copy(url:string){await navigator.clipboard.writeText(url);setMessage("Link do zdjęcia skopiowany.");}
@@ -71,8 +71,8 @@ export default function ZarzadzajPage() {
     const now=new Date().toISOString();
     const {data:author}=await client().from("staff_accounts").select("display_name,role").eq("email",article.author_email).maybeSingle();
     const authorRole=author?.role==="editor_in_chief"?"REDAKTOR NACZELNY":author?.role==="deputy_editor_in_chief"?"ZASTĘPCA REDAKTORA NACZELNEGO":"DZIENNIKARZ";
-    const {error}=await client().from("articles").update({status:"published",review_status:"published",published_at:now,approved_at:now,approved_by:CHIEF,review_note:null,author_name:author?.display_name||article.author_email.split("@")[0],author_role:authorRole,updated_at:now}).eq("id",article.id);
-    if(!error) await notifyPublished(article.id);
+    const {error}=await client().from("articles").update({status:"published",review_status:"published",published_at:now,approved_at:now,approved_by:currentEmail,review_note:null,author_name:author?.display_name||article.author_email.split("@")[0],author_role:authorRole,updated_at:now}).eq("id",article.id);
+    if(!error){ await notifyPublished(article.id); await logActivity({actorEmail:currentEmail,action:"article_published",entityType:"article",entityId:article.id,entityLabel:article.title}); }
     setMessage(error?error.message:"Materiał zatwierdzony i opublikowany.");
     if(!error)await load();
   }
@@ -82,7 +82,7 @@ export default function ZarzadzajPage() {
     if(note===null)return;
     const {error}=await client().from("articles").update({status:"draft",review_status:"changes_requested",review_note:note.trim()||"Proszę poprawić materiał.",updated_at:new Date().toISOString()}).eq("id",article.id);
     setMessage(error?error.message:"Materiał odesłany do poprawy.");
-    if(!error)await load();
+    if(!error){await logActivity({actorEmail:currentEmail,action:"article_changes_requested",entityType:"article",entityId:article.id,entityLabel:article.title,details:{note:note.trim()||"Proszę poprawić materiał."}});await load();}
   }
 
   if(allowed===null)return <main className="manage-page">ŁADOWANIE…</main>;
@@ -92,11 +92,13 @@ export default function ZarzadzajPage() {
     <header>
       <a className="wordmark" href="/">STREET<span>SCOPE</span></a>
       <nav>
+        <a href="/redakcja/dashboard">DASHBOARD</a>
         <a href="/redakcja/material">EDYTOR</a>
         {canApprove&&<a href="/redakcja/zespol">ZESPÓŁ</a>}
         {canApprove&&<a href="/redakcja/rekrutacja">REKRUTACJA</a>}
         {canApprove&&<a href="/redakcja/statystyki">STATYSTYKI</a>}
         {canApprove&&<a href="/redakcja/archiwum">ARCHIWUM</a>}
+        {canApprove&&<a href="/redakcja/logi">LOGI</a>}
       </nav>
     </header>
 

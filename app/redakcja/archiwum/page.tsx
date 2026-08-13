@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "../../../lib/supabase";
+import { logActivity } from "../../../lib/activity-log";
 import "./archive.css";
 
 type ArchivedArticle = {
@@ -23,6 +24,7 @@ export default function ArchivePage(){
   const [query,setQuery]=useState("");
   const [message,setMessage]=useState("");
   const [tab,setTab]=useState<ArchiveTab>("articles");
+  const [currentEmail,setCurrentEmail]=useState("");
   const client=()=>getSupabase();
 
   async function load(){
@@ -48,6 +50,7 @@ export default function ArchivePage(){
       const email=data.user?.email?.toLowerCase()||"";
       const {data:person}=await client().from("staff_accounts").select("active,role").eq("email",email).maybeSingle();
       const ok=Boolean(person?.active&&["editor_in_chief","deputy_editor_in_chief"].includes(person.role));
+      setCurrentEmail(email);
       setAllowed(ok);
       if(ok)await load();
     });
@@ -57,28 +60,28 @@ export default function ArchivePage(){
     if(!window.confirm(`Przywrócić materiał „${row.title}”?`))return;
     const {error}=await client().from("articles").update({archived_at:null,archived_by:null,updated_at:new Date().toISOString()}).eq("id",row.id);
     setMessage(error?error.message:"Materiał został przywrócony.");
-    if(!error)await load();
+    if(!error){await logActivity({actorEmail:currentEmail,action:"article_restored",entityType:"article",entityId:row.id,entityLabel:row.title});await load();}
   }
 
   async function restoreTip(row:ArchivedTip){
     if(!window.confirm(`Przywrócić zgłoszenie „${row.title}”?`))return;
     const {error}=await client().from("tips").update({status:"new",archived_at:null,archived_by:null}).eq("id",row.id);
     setMessage(error?error.message:"Zgłoszenie zostało przywrócone do aktywnych.");
-    if(!error)await load();
+    if(!error){await logActivity({actorEmail:currentEmail,action:"tip_restored",entityType:"tip",entityId:row.id,entityLabel:row.title});await load();}
   }
 
   async function deleteArticle(row:ArchivedArticle){
     if(!window.confirm(`USUNĄĆ TRWALE materiał „${row.title}”?\n\nTej operacji nie da się cofnąć.`))return;
     const {error}=await client().from("articles").delete().eq("id",row.id);
     setMessage(error?error.message:"Materiał został trwale usunięty.");
-    if(!error)await load();
+    if(!error){await logActivity({actorEmail:currentEmail,action:"article_deleted",entityType:"article",entityId:row.id,entityLabel:row.title});await load();}
   }
 
   async function deleteTip(row:ArchivedTip){
     if(!window.confirm(`USUNĄĆ TRWALE zgłoszenie „${row.title}”?\n\nTej operacji nie da się cofnąć.`))return;
     const {error}=await client().from("tips").delete().eq("id",row.id);
     setMessage(error?error.message:"Zgłoszenie zostało trwale usunięte.");
-    if(!error)await load();
+    if(!error){await logActivity({actorEmail:currentEmail,action:"tip_deleted",entityType:"tip",entityId:row.id,entityLabel:row.title});await load();}
   }
 
   const filteredArticles=useMemo(()=>{
@@ -109,6 +112,7 @@ export default function ArchivePage(){
     <header>
       <a className="wordmark" href="/">STREET<span>SCOPE</span></a>
       <nav>
+        <a href="/redakcja/dashboard">DASHBOARD</a>
         <a href="/redakcja/material">EDYTOR</a>
         <a href="/redakcja/zarzadzaj">ZGŁOSZENIA</a>
         <a href="/redakcja/rekrutacja">REKRUTACJA</a>
