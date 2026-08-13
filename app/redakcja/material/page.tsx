@@ -72,6 +72,13 @@ export default function MaterialPage() {
   const canvas = useRef<HTMLDivElement>(null); const inlineFile = useRef<HTMLInputElement>(null); const selectionRange = useRef<Range | null>(null); const draggedMedia = useRef<HTMLElement | null>(null); const pointerMove = useRef<((event: PointerEvent) => void) | null>(null); const bodyLoaded = useRef(false); const bodyRef = useRef(""); const activeTextField = useRef<HTMLElement | null>(null); const [editorDirty, setEditorDirty] = useState(0); const editTimer = useRef<number | null>(null);
   const client = () => getSupabase();
 
+  async function notifyDiscord(event: "review" | "published", publishedId: number) {
+    const { data } = await client().auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+    await fetch("/api/discord", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ event, articleId: publishedId }) });
+  }
+
   const draftKey = `streetscope-material-draft-${isEditing ? articleId : "new"}`;
   const previewBody = useMemo(() => {
     if (!body || typeof document === "undefined") return body || "";
@@ -293,7 +300,7 @@ export default function MaterialPage() {
       const payload = { title: title.trim(), excerpt: excerpt.trim(), category, body: currentBody, image_url: image_url || existingCover, gallery: [], social_title: socialTitle.trim() || null, social_description: socialDescription.trim() || null, social_image: socialImage.trim() || null, status, review_status: nextReviewStatus, author_email: articleAuthor || currentEmail, author_name: currentName || currentEmail.split("@")[0], author_role: role === "editor_in_chief" ? "REDAKTOR NACZELNY" : role === "deputy_editor_in_chief" ? "ZASTĘPCA REDAKTORA NACZELNEGO" : "DZIENNIKARZ", published_at: status === "published" ? (planned || new Date().toISOString()) : null, updated_at: new Date().toISOString() };
       const result = isEditing ? await client().from("articles").update(payload).eq("id", articleId).select("id").single() : await client().from("articles").insert(payload).select("id").single(); const { error } = result;
       if (error) throw error;
-      if (result.data?.id) await client().from("article_versions").insert({ article_id: result.data.id, title: payload.title, excerpt: payload.excerpt, body: payload.body, image_url: payload.image_url, created_by: currentEmail });
+      if (result.data?.id) { await client().from("article_versions").insert({ article_id: result.data.id, title: payload.title, excerpt: payload.excerpt, body: payload.body, image_url: payload.image_url, created_by: currentEmail }); if (nextReviewStatus === "review") await notifyDiscord("review", result.data.id); if (status === "published") await notifyDiscord("published", result.data.id); }
       localStorage.removeItem(draftKey); if (!isEditing) { setTitle(""); setExcerpt(""); setBody(""); bodyRef.current = ""; setCover(null); if (canvas.current) canvas.current.innerHTML = ""; }
       setMessage(status === "published" ? (planned && new Date(planned).getTime() > Date.now() ? "Materiał zaplanowany." : isEditing ? "Materiał zaktualizowany." : "Materiał opublikowany.") : nextReviewStatus === "review" ? "Materiał przekazany do akceptacji." : "Szkic zapisany."); await loadQueue();
     } catch { setMessage("Nie udało się zapisać materiału. Sprawdź bucket article-images w Supabase."); } finally { setBusy(false); }
