@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     if (form.get("portfolioUrl") && !portfolioUrl) return NextResponse.json({ error: "Link do portfolio musi zaczynać się od http:// lub https://." }, { status: 400 });
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const webhook = process.env.RECRUITMENT_DISCORD_WEBHOOK_URL;
     if (!supabaseUrl || !supabaseKey || !webhook) return NextResponse.json({ error: "Rekrutacja nie jest jeszcze skonfigurowana." }, { status: 503 });
 

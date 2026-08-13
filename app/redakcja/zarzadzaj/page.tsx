@@ -6,7 +6,7 @@ import { logActivity } from "../../../lib/activity-log";
 import "./manage.css";
 
 type Tip = { id:number; title:string; district:string; description:string; contact:string|null; status:string; created_at:string; archived_at:string|null; archived_by:string|null };
-type Review = { id:number; title:string; excerpt:string; category:string; author_email:string; updated_at:string; review_note:string|null };
+type Review = { id:number; title:string; excerpt:string; category:string; author_email:string; updated_at:string; review_note:string|null; scheduled_for:string|null };
 
 export default function ZarzadzajPage() {
   const [allowed, setAllowed] = useState<boolean|null>(null);
@@ -34,7 +34,7 @@ export default function ZarzadzajPage() {
         .order("created_at", {ascending:false})
         .limit(80),
       client().storage.from("article-images").list("", {limit:100, sortBy:{column:"created_at",order:"desc"}}),
-      client().from("articles").select("id,title,excerpt,category,author_email,updated_at,review_note").eq("status","draft").eq("review_status","review").is("archived_at",null).order("updated_at",{ascending:false})
+      client().from("articles").select("id,title,excerpt,category,author_email,updated_at,review_note,scheduled_for").eq("status","draft").eq("review_status","review").is("archived_at",null).order("updated_at",{ascending:false})
     ]);
     if (tipsError) setMessage(tipsError.message);
     setTips((rows as Tip[]|null)??[]);
@@ -69,18 +69,19 @@ export default function ZarzadzajPage() {
   async function approve(article:Review){
     if(!window.confirm(`Opublikować „${article.title}”?`)) return;
     const now=new Date().toISOString();
+    const publishTime=article.scheduled_for && new Date(article.scheduled_for).getTime() > Date.now() ? article.scheduled_for : now;
     const {data:author}=await client().from("staff_accounts").select("display_name,role").eq("email",article.author_email).maybeSingle();
     const authorRole=author?.role==="editor_in_chief"?"REDAKTOR NACZELNY":author?.role==="deputy_editor_in_chief"?"ZASTĘPCA REDAKTORA NACZELNEGO":"DZIENNIKARZ";
-    const {error}=await client().from("articles").update({status:"published",review_status:"published",published_at:now,approved_at:now,approved_by:currentEmail,review_note:null,author_name:author?.display_name||article.author_email.split("@")[0],author_role:authorRole,updated_at:now}).eq("id",article.id);
-    if(!error){ await notifyPublished(article.id); await logActivity({actorEmail:currentEmail,action:"article_published",entityType:"article",entityId:article.id,entityLabel:article.title}); }
-    setMessage(error?error.message:"Materiał zatwierdzony i opublikowany.");
+    const {error}=await client().from("articles").update({status:"published",review_status:"published",published_at:publishTime,approved_at:now,approved_by:currentEmail,review_note:null,reviewed_by:currentEmail,reviewed_at:now,author_name:author?.display_name||article.author_email.split("@")[0],author_role:authorRole,updated_at:now}).eq("id",article.id);
+    if(!error){ if(publishTime===now) await notifyPublished(article.id); await logActivity({actorEmail:currentEmail,action:publishTime===now?"article_published":"article_scheduled",entityType:"article",entityId:article.id,entityLabel:article.title}); }
+    setMessage(error?error.message:(publishTime===now?"Materiał zatwierdzony i opublikowany.":`Materiał zatwierdzony. Publikacja: ${new Date(publishTime).toLocaleString("pl-PL")}.`));
     if(!error)await load();
   }
 
   async function requestChanges(article:Review){
     const note=window.prompt("Napisz redaktorowi, co ma poprawić:",article.review_note||"");
     if(note===null)return;
-    const {error}=await client().from("articles").update({status:"draft",review_status:"changes_requested",review_note:note.trim()||"Proszę poprawić materiał.",updated_at:new Date().toISOString()}).eq("id",article.id);
+    const {error}=await client().from("articles").update({status:"draft",review_status:"changes_requested",review_note:note.trim()||"Proszę poprawić materiał.",reviewed_by:currentEmail,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",article.id);
     setMessage(error?error.message:"Materiał odesłany do poprawy.");
     if(!error){await logActivity({actorEmail:currentEmail,action:"article_changes_requested",entityType:"article",entityId:article.id,entityLabel:article.title,details:{note:note.trim()||"Proszę poprawić materiał."}});await load();}
   }
@@ -113,7 +114,7 @@ export default function ZarzadzajPage() {
       {reviews.length?<div className="approval-list">{reviews.map(article=><article key={article.id}>
         <span>{article.category} · OD {article.author_email}</span>
         <h2>{article.title}</h2>
-        <p>{article.excerpt}</p>
+        <p>{article.excerpt}</p>{article.scheduled_for&&<small>PLANOWANA PUBLIKACJA: {new Date(article.scheduled_for).toLocaleString("pl-PL")}</small>}
         {article.review_note&&<small>OSTATNIA UWAGA: {article.review_note}</small>}
         <div>
           <a href={`/redakcja/material?id=${article.id}`}>OTWÓRZ I POPRAW →</a>

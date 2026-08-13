@@ -10,8 +10,9 @@ export async function POST(request: Request) {
     if (title.length < 6 || description.length < 30) return NextResponse.json({ error: "Nieprawidłowe zgłoszenie." }, { status: 400 });
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (supabaseUrl && supabaseKey) {
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) return NextResponse.json({ error: "Formularz nie jest jeszcze skonfigurowany." }, { status: 503 });
+    {
       const saved = await fetch(`${supabaseUrl}/rest/v1/tips`, { method: "POST", headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, Prefer: "return=minimal" }, body: JSON.stringify({ title, district, description, contact: contact || null, status: "new" }) });
       if (!saved.ok) throw new Error("Tip storage failure");
     }

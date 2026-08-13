@@ -22,14 +22,14 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
     const client = getSupabase();
     const fields = "id,title,category,image_url,views";
     const [latestResult, popularResult] = await Promise.all([
-      client.from("articles").select(fields).eq("status", "published").is("archived_at", null).neq("id", activeId).order("published_at", { ascending: false }).limit(3),
-      client.from("articles").select(fields).eq("status", "published").is("archived_at", null).neq("id", activeId).order("views", { ascending: false }).limit(3),
+      client.from("articles").select(fields).eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).neq("id", activeId).order("published_at", { ascending: false }).limit(3),
+      client.from("articles").select(fields).eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).neq("id", activeId).order("views", { ascending: false }).limit(3),
     ]);
     setLatest((latestResult.data || []) as RailStory[]);
     setPopular((popularResult.data || []) as RailStory[]);
   };
 
-  useEffect(() => { params.then(({ id }) => { const articleId = Number(id); if (!Number.isInteger(articleId) || articleId < 1) { setMissing(true); return; } getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at,views,author_email,author_name,author_role").eq("id", articleId).eq("status", "published").is("archived_at", null).maybeSingle().then(({ data }) => { if (!data) { setMissing(true); return; } setArticle(data as Article); void loadRails(articleId); getSupabase().rpc("increment_article_views", { article_id: articleId }).then(() => setArticle(current => current ? { ...current, views: (current.views ?? 0) + 1 } : current)); }); }); }, [params]);
+  useEffect(() => { params.then(({ id }) => { const articleId = Number(id); if (!Number.isInteger(articleId) || articleId < 1) { setMissing(true); return; } getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at,views,author_email,author_name,author_role").eq("id", articleId).eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).maybeSingle().then(({ data }) => { if (!data) { setMissing(true); return; } setArticle(data as Article); void loadRails(articleId); getSupabase().rpc("increment_article_views", { article_id: articleId }).then(() => setArticle(current => current ? { ...current, views: (current.views ?? 0) + 1 } : current)); }); }); }, [params]);
   if (missing) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><h1>TEGO MATERIAŁU<br />TU <em>NIE MA.</em></h1><a href="/" className="red-button">← WRÓĆ DO WIADOMOŚCI</a></main>;
   if (!article) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p className="kicker"><i /> ŁADOWANIE MATERIAŁU</p></main>;
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "long", year: "numeric" }) : "DZISIAJ";
