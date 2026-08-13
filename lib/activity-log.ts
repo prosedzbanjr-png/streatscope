@@ -5,6 +5,7 @@ export type ActivityAction =
   | "article_updated"
   | "article_submitted"
   | "article_published"
+  | "article_scheduled"
   | "article_archived"
   | "article_restored"
   | "article_deleted"
