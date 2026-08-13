@@ -35,19 +35,26 @@ export function HomeNewsBoard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getSupabase()
-      .from("articles")
-      .select("id,title,category,excerpt,image_url,published_at,pinned")
-      .eq("status", "published")
-      .is("archived_at", null)
-      .lte("published_at", new Date().toISOString())
-      .order("pinned", { ascending: false })
-      .order("published_at", { ascending: false })
-      .limit(8)
-      .then(({ data }) => {
-        setStories(data?.length ? (data as Story[]) : fallback);
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const { data } = await getSupabase()
+          .from("articles")
+          .select("id,title,category,excerpt,image_url,published_at,pinned")
+          .eq("status", "published")
+          .is("archived_at", null)
+          .lte("published_at", new Date().toISOString())
+          .order("pinned", { ascending: false })
+          .order("published_at", { ascending: false })
+          .limit(8);
+        if (!cancelled) setStories(data?.length ? (data as Story[]) : fallback);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, []);
 
 

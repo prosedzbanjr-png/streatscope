@@ -18,7 +18,28 @@ function meta(row:Feature) {
 
 export function CultureHub({ kind }:{ kind:Kind }) {
   const [rows,setRows]=useState<Feature[]>([]); const [loading,setLoading]=useState(true);
-  useEffect(()=>{ getSupabase().from("street_features").select("*").eq("kind",kind).eq("published",true).is("archived_at",null).order("featured",{ascending:false}).order("created_at",{ascending:false}).limit(30).then(({data})=>setRows((data as Feature[]|null)||[])).finally(()=>setLoading(false)); },[kind]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const { data } = await getSupabase()
+          .from("street_features")
+          .select("*")
+          .eq("kind", kind)
+          .eq("published", true)
+          .is("archived_at", null)
+          .order("featured", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(30);
+        if (!cancelled) setRows((data as Feature[] | null) || []);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [kind]);
   const hero=rows[0]; const rest=rows.slice(1);
   const isFashion=kind==="fashion";
   return <main className={`culture-page ${kind}`}>
