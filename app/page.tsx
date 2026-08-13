@@ -1,18 +1,20 @@
 import { HomeNewsBoard } from "./home-news-board";
 import { PopularStories } from "./popular-stories";
+import { StreetCultureStrip } from "./street-culture-strip";
 
 export default function Home() {
   const ticker = ["NEWS THAT HITS HOME.", "LA MESA · LOS SANTOS", "ZGŁOŚ TEMAT REDAKCJI", "NOWE MATERIAŁY KAŻDEGO DNIA"];
   return <main>
-    <div className="ticker" aria-label="StreetScope"><div className="ticker-track">{[...ticker, ...ticker].map((item, index) => <span key={`${item}-${index}`}><b>●</b>{item}</span>)}</div></div>
+    <div className="ticker" aria-label="StreetScope"><div className="ticker-label">BREAKING</div><div className="ticker-window"><div className="ticker-track">{[...ticker, ...ticker].map((item, index) => <span key={`${item}-${index}`}><b>●</b>{item}</span>)}</div></div></div>
     <header className="nav stage31-nav">
       <a href="/" className="wordmark">STREET<span>SCOPE</span></a>
-      <nav><a href="/wiadomosci">WIADOMOŚCI</a><a href="/miasto">MIASTO</a><a href="/o-redakcji">O REDAKCJI</a><a href="/zglos-temat">ZGŁOŚ TEMAT</a></nav>
+      <nav><a href="/wiadomosci">WIADOMOŚCI</a><a href="/fashion">FASHION</a><a href="/motor">MOTOR</a><a href="/miasto">MIASTO</a><a href="/o-redakcji">O REDAKCJI</a><a href="/zglos-temat">ZGŁOŚ TEMAT</a></nav>
       <div className="nav-actions"><a className="recruit" href="/dolacz">DOŁĄCZ DO REDAKCJI</a></div>
     </header>
 
     <HomeNewsBoard />
     <PopularStories />
+    <StreetCultureStrip />
 
     <section className="street-intro">
       <div className="street-brand"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NIEZALEŻNA REDAKCJA ULICZNA</p><strong>Z ULICY. DLA LUDZI. Z MIASTA.</strong></div>

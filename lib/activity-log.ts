@@ -18,12 +18,15 @@ export type ActivityAction =
   | "staff_added"
   | "staff_updated"
   | "staff_role_changed"
-  | "staff_toggled";
+  | "staff_toggled"
+  | "feature_created"
+  | "feature_updated"
+  | "feature_archived";
 
 export async function logActivity(input: {
   actorEmail?: string | null;
   action: ActivityAction;
-  entityType: "article" | "tip" | "recruitment" | "staff";
+  entityType: "article" | "tip" | "recruitment" | "staff" | "feature";
   entityId?: number | string | null;
   entityLabel?: string | null;
   details?: Record<string, unknown>;

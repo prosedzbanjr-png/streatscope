@@ -31,7 +31,8 @@ function dateLabel(value?: string | null) {
 }
 
 export function HomeNewsBoard() {
-  const [stories, setStories] = useState<Story[]>(fallback);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getSupabase()
@@ -44,9 +45,21 @@ export function HomeNewsBoard() {
       .order("published_at", { ascending: false })
       .limit(8)
       .then(({ data }) => {
-        if (data?.length) setStories(data as Story[]);
-      });
+        setStories(data?.length ? (data as Story[]) : fallback);
+      })
+      .finally(() => setLoading(false));
   }, []);
+
+
+  if (loading) return <section className="home-loading" aria-label="Ładowanie najnowszych materiałów">
+    <div className="skeleton skeleton-hero" />
+    <div className="skeleton-side">
+      <div className="skeleton skeleton-line short" />
+      <div className="skeleton skeleton-line" />
+      <div className="skeleton skeleton-line" />
+      <div className="skeleton skeleton-line medium" />
+    </div>
+  </section>;
 
   const hero = stories[0] ?? fallback[0];
   const quick = useMemo(() => stories.slice(1, 6), [stories]);

@@ -9,6 +9,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/wiadomosci`, lastModified: now, changeFrequency: "hourly", priority: 0.9 },
     { url: `${base}/miasto`, lastModified: now, changeFrequency: "daily", priority: 0.7 },
     { url: `${base}/o-redakcji`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${base}/fashion`, lastModified: now, changeFrequency: "daily", priority: 0.8 },
+    { url: `${base}/motor`, lastModified: now, changeFrequency: "daily", priority: 0.8 },
   ];
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
