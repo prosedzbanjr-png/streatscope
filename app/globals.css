@@ -369,3 +369,4 @@ html[data-theme="dark"] .approval-list .approve,
 html[data-theme="dark"] .team-grid button.primary,
 html[data-theme="dark"] .staff-login button.primary,
 html[data-theme="dark"] .form-actions button.publish{color:#fff!important;border-color:var(--red)!important}
+h1,h2,h3,p,a,span,b,em{overflow-wrap:anywhere}

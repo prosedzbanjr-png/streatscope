@@ -6,7 +6,9 @@ import { ThemeToggle } from "./theme-toggle";
 export const metadata: Metadata = {
   metadataBase: new URL("https://streatscope.vercel.app"),
   title: "StreetScope | News That Hits Home",
-  description: "StreetScope — niezależna redakcja z Los Santos.",
+  description: "StreetScope — niezależna redakcja z Los Santos. Wiadomości, ulica, kultura i historie mieszkańców.",
+  alternates: { canonical: "https://streatscope.vercel.app" },
+  robots: { index: true, follow: true },
   keywords: ["StreetScope", "Los Santos", "wiadomości", "miasto", "relacje"],
   openGraph: {
     title: "StreetScope | News That Hits Home",
@@ -14,6 +16,7 @@ export const metadata: Metadata = {
     siteName: "StreetScope",
     locale: "pl_PL",
     type: "website",
+    url: "https://streatscope.vercel.app",
     images: [{ url: "/images/hero.png", width: 900, height: 600, alt: "StreetScope" }],
   },
   twitter: { card: "summary_large_image", title: "StreetScope", description: "News That Hits Home" },
