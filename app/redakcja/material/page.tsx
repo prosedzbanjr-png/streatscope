@@ -35,10 +35,27 @@ function turnFreeTextIntoInputs(root: HTMLElement) {
 
 function serializeCanvas(root: HTMLElement) {
   const copy = root.cloneNode(true) as HTMLElement;
+  const rootBox = root.getBoundingClientRect();
+  const sourceChildren = Array.from(root.children).filter(node => !(node as HTMLElement).dataset.pageSheet) as HTMLElement[];
+  const copyChildren = Array.from(copy.children).filter(node => !(node as HTMLElement).dataset.pageSheet) as HTMLElement[];
+  sourceChildren.forEach((source, index) => {
+    const target = copyChildren[index] as HTMLElement | undefined;
+    if (!target) return;
+    const box = source.getBoundingClientRect();
+    target.dataset.readerX = String(Math.max(0, Math.round(box.left - rootBox.left)));
+    const rawY = Math.max(0, Math.round(box.top - rootBox.top));
+    // Editor sheets have a visible 28px gap. Persist the displayed position,
+    // including that gap, so page two starts below page one in the reader.
+    target.dataset.readerY = String(rawY + Math.floor(rawY / 980) * 28);
+    target.dataset.readerWidth = String(Math.max(1, Math.round(box.width)));
+    target.dataset.readerHeight = String(Math.max(1, Math.round(box.height)));
+  });
+  copy.dataset.canvasHeight = String(Math.max(980, Math.round(root.offsetHeight)));
+  copy.dataset.pageCount = root.dataset.pages || "1";
   copy.querySelectorAll("[data-page-sheet]").forEach(sheet => sheet.remove());
   copy.querySelectorAll(".text-handle").forEach(handle => handle.remove());
   copy.querySelectorAll<HTMLElement>(".free-text").forEach(field => field.removeAttribute("contenteditable"));
-  return copy.innerHTML;
+  return `<div class="article-layout" data-canvas-height="${copy.dataset.canvasHeight}" data-page-count="${copy.dataset.pageCount}">${copy.innerHTML}</div>`;
 }
 
 export default function MaterialPage() {
@@ -65,11 +82,22 @@ export default function MaterialPage() {
       // Copy them to CSS variables so preview rules cannot accidentally reset
       // the placement to a full-width image.
       const style = node.style;
-      if (style.width) style.setProperty("--reader-width", style.width);
+      style.setProperty("--reader-width", `${node.dataset.readerWidth || node.offsetWidth || 1}px`);
       if (style.marginLeft) style.setProperty("--reader-margin-left", style.marginLeft);
       if (style.marginRight) style.setProperty("--reader-margin-right", style.marginRight);
       if (style.marginTop) style.setProperty("--reader-margin-top", style.marginTop);
       if (style.marginBottom) style.setProperty("--reader-margin-bottom", style.marginBottom);
+    });
+    documentCopy.querySelectorAll<HTMLElement>("[data-reader-x]").forEach(node => {
+      node.style.position = "absolute";
+      node.style.left = `${node.dataset.readerX || "0"}px`;
+      node.style.top = `${node.dataset.readerY || "0"}px`;
+      node.style.width = `${node.dataset.readerWidth || "1"}px`;
+      node.style.minHeight = `${node.dataset.readerHeight || "1"}px`;
+      node.style.margin = "0";
+    });
+    documentCopy.querySelectorAll<HTMLElement>(".article-layout[data-canvas-height]").forEach(node => {
+      node.style.minHeight = `${node.dataset.canvasHeight || "980"}px`;
     });
     return documentCopy.body.innerHTML;
   }, [body]);
@@ -79,7 +107,7 @@ export default function MaterialPage() {
   useEffect(() => { const id = Number(new URLSearchParams(window.location.search).get("id")); setArticleId(Number.isFinite(id) && id > 0 ? id : 0); setRouteReady(true); }, []);
   async function loadQueue() { const { data } = await client().from("articles").select("id,title,status,review_status,updated_at").order("updated_at", { ascending: false }).limit(12); setArticles((data as Array<{ id: number; title: string; status: string; review_status?: string | null; updated_at: string }> | null) ?? []); }
   useEffect(() => { if (!routeReady) return; client().auth.getUser().then(async ({ data }) => { const email = data.user?.email?.toLowerCase() || ""; let nextRole:"editor_in_chief"|"deputy_editor_in_chief"|"journalist"|null = null; let nextName=""; if (email) { const {data:staff}=await client().from("staff_accounts").select("active,role,display_name,first_name,last_name").eq("email",email).maybeSingle(); if (staff?.active) { nextRole=staff.role; nextName=[staff.first_name,staff.last_name].filter(Boolean).join(" ")||staff.display_name||""; } } setCurrentEmail(email); setCurrentName(nextName); setRole(nextRole); setAllowed(Boolean(nextRole)); if (!nextRole) { setLoaded(true); return; } await loadQueue(); if (!isEditing) { setLoaded(true); return; } const { data: article } = await client().from("articles").select("title,excerpt,category,body,image_url,social_title,social_description,social_image,published_at,review_status,author_email").eq("id", articleId).single(); if (!article) { setMessage("Nie znaleziono materiału albo nie masz do niego dostępu."); setLoaded(true); return; } setTitle(article.title); setExcerpt(article.excerpt); setCategory(article.category); setBody(article.body || ""); setExistingCover(article.image_url); setSocialTitle(article.social_title || ""); setSocialDescription(article.social_description || ""); setSocialImage(article.social_image || ""); setPublishAt(article.published_at ? new Date(article.published_at).toISOString().slice(0, 16) : ""); setReviewStatus(article.review_status || "draft"); setArticleAuthor(article.author_email || email); setLoaded(true); }); }, [routeReady, articleId]);
-  useEffect(() => { const root = canvas.current; if (!root) return; if (!bodyLoaded.current) { const normalized = body.replace(/\sclass=(['"])\1/g, "").replace(/\sclass=(['"])is-selected\1/g, "").replace(/\sclass=(['"])inline-media is-selected\1/g, ' class="inline-media"'); root.innerHTML = normalized; turnFreeTextIntoInputs(root); bodyRef.current = normalized; bodyLoaded.current = true; } root.contentEditable = "false"; root.querySelectorAll("p,h2,h3,blockquote,figcaption").forEach(node => { (node as HTMLElement).contentEditable = "true"; }); window.requestAnimationFrame(() => fitCanvasPages()); }, [body]);
+  useEffect(() => { const root = canvas.current; if (!root) return; if (!bodyLoaded.current) { const normalized = body.replace(/\sclass=(['"])\1/g, "").replace(/\sclass=(['"])is-selected\1/g, "").replace(/\sclass=(['"])inline-media is-selected\1/g, ' class="inline-media"'); const holder = document.createElement("div"); holder.innerHTML = normalized; const savedCanvas = holder.querySelector<HTMLElement>(":scope > .article-layout[data-canvas-height]"); if (savedCanvas) { root.innerHTML = savedCanvas.innerHTML; root.dataset.pages = savedCanvas.dataset.pageCount || "1"; const savedHeight = Number(savedCanvas.dataset.canvasHeight); if (Number.isFinite(savedHeight) && savedHeight > 0) { root.style.height = `${savedHeight}px`; root.style.minHeight = `${savedHeight}px`; } } else { root.innerHTML = normalized; } turnFreeTextIntoInputs(root); bodyRef.current = normalized; bodyLoaded.current = true; } root.contentEditable = "false"; root.querySelectorAll("p,h2,h3,blockquote,figcaption").forEach(node => { (node as HTMLElement).contentEditable = "true"; }); window.requestAnimationFrame(() => fitCanvasPages()); }, [body]);
   useEffect(() => { const root = canvas.current; if (!root) return; root.querySelectorAll("figure.inline-media").forEach(figure => { if (figure.querySelector("[data-media-handle]")) return; const handle = document.createElement("span"); handle.className = "media-handle"; handle.contentEditable = "false"; handle.draggable = false; handle.dataset.mediaHandle = "true"; handle.setAttribute("role", "button"); handle.setAttribute("aria-label", "Złap i przeciągnij zdjęcie"); handle.title = "Złap i przeciągnij zdjęcie"; handle.textContent = "⠿"; figure.prepend(handle); }); }, [body, selectedMedia]);
   useEffect(() => {
     const installControls = () => {
