@@ -1,1 +1,11 @@
-.popular{padding:96px 5vw;background:#e9e5df}.popular-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.popular-grid>a{display:grid;grid-template-columns:116px 1fr;gap:17px;border-top:2px solid var(--ink);padding-top:15px;transition:transform .2s}.popular-grid>a:hover{transform:translateY(-5px)}.popular-grid img{width:116px;height:116px;object-fit:cover;filter:grayscale(.35)}.popular-grid p,.popular-grid span{font:500 9px 'DM Mono',monospace;letter-spacing:.09em}.popular-grid p{margin:2px 0 10px;color:var(--red)}.popular-grid h2{font:800 31px/.88 'Barlow Condensed',sans-serif;letter-spacing:-.04em;margin:0 0 15px}.popular-grid span{color:#555}@media(max-width:800px){.popular{padding:70px 6vw}.popular-grid{grid-template-columns:1fr;gap:22px}.popular-grid h2{font-size:32px}}
+.popular{padding:96px 5vw;background:#e9e5df}.popular-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.popular-grid>a{display:grid;grid-template-columns:116px 1fr;gap:17px;border-top:2px solid var(--ink);padding-top:15px;transition:transform .2s}.popular-grid>a:hover{transform:translateY(-5px)}.popular-grid img{width:116px;height:116px;object-fit:cover;filter:grayscale(.35)}.popular-grid p,.popular-grid span{font:500 9px 'DM Mono',monospace;letter-spacing:.09em}.popular-grid p{margin:2px 0 10px;color:var(--red)}.popular-grid h2{font:800 31px/.88 'Roboto Condensed',Arial,sans-serif;letter-spacing:-.04em;margin:0 0 15px}.popular-grid span{color:#555}@media(max-width:800px){.popular{padding:70px 6vw}.popular-grid{grid-template-columns:1fr;gap:22px}.popular-grid h2{font-size:32px}}
+
+
+/* ETAP 30 */
+.popular{padding:58px 4.5vw 72px!important;background:#e8e4de!important;border-top:1px solid #d0cbc4}
+.popular-grid{gap:22px!important}
+.popular-grid>a{grid-template-columns:105px 1fr!important;gap:14px!important;border-top:3px solid #111!important;padding-top:11px!important;transform:none!important}
+.popular-grid>a:hover{transform:none!important}
+.popular-grid img{width:105px!important;height:90px!important;filter:none!important}
+.popular-grid h2{font-family:'Roboto Condensed',Arial,sans-serif!important;font-size:27px!important;line-height:.94!important;letter-spacing:-.035em!important;margin-bottom:10px!important}
+@media(max-width:800px){.popular{padding:50px 5vw 62px!important}.popular-grid{gap:18px!important}.popular-grid h2{font-size:28px!important}}
