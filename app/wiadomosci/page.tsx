@@ -14,7 +14,7 @@ export default function WiadomosciPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  useEffect(() => { getSupabase().from("articles").select("id,title,category,excerpt,image_url,published_at").eq("status", "published").lte("published_at", new Date().toISOString()).order("published_at", { ascending: false }).then(({ data }) => setArticles((data as Article[] | null) ?? [])); }, []);
+  useEffect(() => { getSupabase().from("articles").select("id,title,category,excerpt,image_url,published_at").eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).order("published_at", { ascending: false }).then(({ data }) => setArticles((data as Article[] | null) ?? [])); }, []);
   const categories = useMemo(() => ["WSZYSTKIE", ...Array.from(new Set(articles.map(article => article.category)))], [articles]);
   const visible = useMemo(() => { const search = query.trim().toLocaleLowerCase("pl-PL"); return articles.filter(article => (category === "WSZYSTKIE" || article.category === category) && (!search || `${article.title} ${article.excerpt} ${article.category}`.toLocaleLowerCase("pl-PL").includes(search))); }, [articles, category, query]);
   const totalPages = Math.max(1, Math.ceil(visible.length / perPage));
