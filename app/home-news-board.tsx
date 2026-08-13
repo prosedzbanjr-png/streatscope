@@ -56,9 +56,10 @@ export function HomeNewsBoard() {
   }, [stories]);
 
   const heroHref = hero.id ? `/artykul/${hero.id}` : "/wiadomosci";
+  const hasQuick = quick.length > 0;
 
   return <>
-    <section className="home-lead">
+    <section className={`home-lead${hasQuick ? "" : " no-brief"}`}>
       <article className="lead-story">
         <img src={hero.image_url || "/images/hero.png"} alt="" />
         <div className="lead-shade" />
@@ -70,7 +71,7 @@ export function HomeNewsBoard() {
         </div>
       </article>
 
-      <aside className="news-brief">
+      {hasQuick && <aside className="news-brief">
         <div className="brief-head"><b>REDAKCYJNY SKRÓT</b><span>NAJWAŻNIEJSZE Z MIASTA</span></div>
         <div className="brief-list">
           {quick.map((story, index) => <a href={story.id ? `/artykul/${story.id}` : "/wiadomosci"} key={`${story.id ?? story.title}-${index}`}>
@@ -79,7 +80,7 @@ export function HomeNewsBoard() {
           </a>)}
         </div>
         <a className="brief-all" href="/wiadomosci">WSZYSTKIE WIADOMOŚCI <b>→</b></a>
-      </aside>
+      </aside>}
     </section>
 
     <section className="latest-board" id="stories">

@@ -404,3 +404,66 @@ html[data-theme="light"] body:before{opacity:.022}
 @media(max-width:1150px){.home-lead:before{right:24px}.lead-story:after{font-size:14px;max-width:150px}.street-intro:after{font-size:21px}}
 @media(max-width:820px){.ticker:after{display:none}.home-lead:before{top:18px;right:18px;font-size:14px}.lead-story:after{display:none}.latest-card:nth-child(n){transform:none}.street-intro:after{right:7vw;top:22px;font-size:18px}.stage31-nav nav a:hover:after{display:none}}
 @media(max-width:560px){.home-lead:before{font-size:11px;border-width:2px;padding:6px 8px}.latest-card:before{width:42px}.street-intro:after{display:none}}
+
+/* =========================================================
+   ETAP 34.1 — STREET POLISH
+   Dopracowanie renderu produkcyjnego bez zmian funkcjonalnych.
+   ========================================================= */
+.home-lead.no-brief{grid-template-columns:1fr!important}
+.home-lead.no-brief .lead-story{border-right:0!important;min-height:600px}
+.home-lead.no-brief .lead-copy{max-width:800px}
+.home-lead.no-brief:before{right:34px!important}
+.home-lead.no-brief .lead-story:after{right:4%!important}
+
+/* Hero dostaje czytelny charakter zine, ale tekst nadal jest priorytetem. */
+.lead-story:before{content:"SS / FIELD NOTE";position:absolute;z-index:4;left:28px;top:26px;padding:6px 9px;background:rgba(10,10,10,.84);border-left:4px solid var(--red);color:#f4f1eb;font:700 8px 'DM Mono',monospace;letter-spacing:.12em;transform:rotate(-1deg)}
+.home-lead:before{box-shadow:5px 5px 0 rgba(0,0,0,.26)!important;backdrop-filter:blur(3px)}
+.lead-copy{padding-left:12px;border-left:2px solid rgba(255,255,255,.2)}
+.lead-copy h1:after{width:168px!important;height:8px!important;margin-top:16px!important}
+.lead-meta a{background:rgba(8,8,8,.42);backdrop-filter:blur(4px)}
+
+/* Redakcyjny skrót wygląda jak przypięty wycinek, a nie pusty sidebar. */
+.news-brief{border-left:1px solid #353535}
+.brief-head:before{content:"// DESK";display:table;margin-bottom:8px;color:#8d8d8d;font:700 8px 'DM Mono',monospace;letter-spacing:.14em;transform:rotate(-1deg)}
+.brief-list a{position:relative;padding-right:18px}
+.brief-list a:after{content:"↗";position:absolute;right:0;top:50%;opacity:0;color:var(--red);transform:translateY(-50%) rotate(-7deg);transition:.15s}
+.brief-list a:hover:after{opacity:1}
+
+/* Sekcje i karty: więcej charakteru, mniej przypadkowego chaosu. */
+.board-title{border-bottom-width:3px!important}
+.board-title:after{content:"ISSUE / LOS SANTOS";position:absolute;right:0;bottom:10px;color:var(--theme-muted,#777);font:600 7px 'DM Mono',monospace;letter-spacing:.12em;opacity:.55;pointer-events:none}
+.board-title>a{position:relative;z-index:2;background:var(--theme-bg);padding-left:12px}
+.latest-grid{gap:20px!important}
+.latest-card{overflow:visible!important}
+.latest-card:nth-child(4n+1):after{content:"RAW";position:absolute;z-index:5;right:8px;top:8px;padding:4px 7px;border:2px solid #fff;color:#fff;background:rgba(0,0,0,.45);font:900 12px/.9 'Roboto Condensed',sans-serif;letter-spacing:.06em;transform:rotate(3deg)}
+.latest-card:nth-child(4n+3):after{content:"LOCAL";position:absolute;z-index:5;right:8px;top:8px;padding:4px 7px;border:2px solid var(--red);color:#fff;background:var(--red);font:900 11px/.9 'Roboto Condensed',sans-serif;letter-spacing:.06em;transform:rotate(-2deg)}
+.latest-card:before{clip-path:polygon(0 12%,96% 0,100% 86%,5% 100%);filter:drop-shadow(0 1px 0 rgba(0,0,0,.2))}
+.latest-card h3{line-height:.98!important}
+.latest-arrow{width:32px;height:32px;display:grid;place-items:center;border:1px solid currentColor;transform:rotate(-3deg);transition:.16s}
+.latest-card:hover .latest-arrow{background:var(--red);border-color:var(--red);color:#fff;transform:rotate(0)}
+
+/* Czerwone markerowe separatory na sekcjach publicznych. */
+.popular .section-label,.street-copy .kicker{position:relative}
+.popular .section-label:after{content:"";position:absolute;left:0;bottom:-7px;width:96px;height:5px;background:var(--red);transform:rotate(-1deg);clip-path:polygon(0 30%,100% 0,93% 100%,4% 80%)}
+.street-brand .wordmark{display:inline-block;transform:rotate(-1deg)}
+.street-brand:before{content:"INDEPENDENT / LOCAL / RAW";display:block;margin-bottom:18px;color:#777;font:600 8px 'DM Mono',monospace;letter-spacing:.14em}
+
+/* Subtelny papier i postarzane krawędzie tylko na publicznych powierzchniach. */
+.latest-board,.popular{background-image:linear-gradient(rgba(255,255,255,.018),rgba(255,255,255,.018)),repeating-linear-gradient(90deg,transparent 0 34px,rgba(0,0,0,.018) 35px)!important}
+html[data-theme="dark"] .latest-board,html[data-theme="dark"] .popular{background-image:repeating-linear-gradient(90deg,transparent 0 34px,rgba(255,255,255,.012) 35px)!important}
+
+@media(max-width:1150px){
+  .board-title:after{display:none}
+  .home-lead.no-brief .lead-story{min-height:560px}
+}
+@media(max-width:820px){
+  .home-lead.no-brief .lead-story{min-height:520px}
+  .lead-story:before{left:18px;top:18px}
+  .lead-copy{border-left:0;padding-left:0}
+  .latest-card:nth-child(n):after{font-size:10px}
+}
+@media(max-width:560px){
+  .home-lead.no-brief .lead-story{min-height:500px}
+  .lead-story:before{font-size:7px;padding:5px 7px}
+  .latest-card:nth-child(n):after{right:6px;top:6px}
+}
