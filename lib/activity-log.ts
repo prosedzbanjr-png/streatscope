@@ -22,10 +22,13 @@ export type ActivityAction =
   | "feature_created"
   | "feature_updated"
   | "feature_archived"
+  | "feature_restored"
   | "feature_published"
   | "feature_changes_requested"
   | "guide_published"
-  | "guide_changes_requested";
+  | "guide_changes_requested"
+  | "guide_archived"
+  | "guide_restored";
 
 export async function logActivity(input: {
   actorEmail?: string | null;
