@@ -21,12 +21,16 @@ export type ActivityAction =
   | "staff_toggled"
   | "feature_created"
   | "feature_updated"
-  | "feature_archived";
+  | "feature_archived"
+  | "feature_published"
+  | "feature_changes_requested"
+  | "guide_published"
+  | "guide_changes_requested";
 
 export async function logActivity(input: {
   actorEmail?: string | null;
   action: ActivityAction;
-  entityType: "article" | "tip" | "recruitment" | "staff" | "feature";
+  entityType: "article" | "tip" | "recruitment" | "staff" | "feature" | "guide_place";
   entityId?: number | string | null;
   entityLabel?: string | null;
   details?: Record<string, unknown>;
