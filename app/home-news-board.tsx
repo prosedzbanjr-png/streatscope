@@ -70,18 +70,31 @@ export function HomeNewsBoard() {
 
   if(loading)return <section className="home-loading" aria-label="Ładowanie najnowszych materiałów"><div className="skeleton skeleton-hero"/><div className="skeleton-side"><div className="skeleton skeleton-line short"/><div className="skeleton skeleton-line"/><div className="skeleton skeleton-line"/><div className="skeleton skeleton-line medium"/></div></section>;
 
-  const used=new Set<string>();
-  const take=(slot:string,fallbackIndex:number)=>{
+  const mainUsed=new Set<string>();
+  const takeMain=(slot:string,fallbackIndex:number)=>{
     const manualChoice=manual[slot];
-    if(manualChoice&&!used.has(uniqueKey(manualChoice))){used.add(uniqueKey(manualChoice));return manualChoice;}
-    const automatic=stories.find((s,idx)=>idx>=fallbackIndex&&!used.has(uniqueKey(s)));
-    if(automatic){used.add(uniqueKey(automatic));return automatic;}
-    const backup=fallback.find(s=>!used.has(uniqueKey(s)))||fallback[fallbackIndex%fallback.length];
-    used.add(uniqueKey(backup));return backup;
+    if(manualChoice&&!mainUsed.has(uniqueKey(manualChoice))){mainUsed.add(uniqueKey(manualChoice));return manualChoice;}
+    const automatic=stories.find((s,idx)=>idx>=fallbackIndex&&!mainUsed.has(uniqueKey(s)));
+    if(automatic){mainUsed.add(uniqueKey(automatic));return automatic;}
+    const backup=fallback.find(s=>!mainUsed.has(uniqueKey(s)))||fallback[fallbackIndex%fallback.length];
+    mainUsed.add(uniqueKey(backup));return backup;
   };
-  const hero=take("hero",0);
-  const cards=[take("card1",1),take("card2",1),take("card3",1),take("card4",1)];
-  const quick=[take("brief1",1),take("brief2",1),take("brief3",1),take("brief4",1),take("brief5",1)];
+
+  const hero=takeMain("hero",0);
+  const cards=[takeMain("card1",1),takeMain("card2",1),takeMain("card3",1),takeMain("card4",1)];
+
+  // Skrót ma własną pulę unikalności. Dzięki temu może pokazywać prawdziwe materiały,
+  // które są już HERO/kafelkami, ale nie powtórzy jednego wpisu pięć razy.
+  const briefUsed=new Set<string>();
+  const takeBrief=(slot:string,index:number)=>{
+    const manualChoice=manual[slot];
+    if(manualChoice&&!briefUsed.has(uniqueKey(manualChoice))){briefUsed.add(uniqueKey(manualChoice));return manualChoice;}
+    const automatic=stories.find(s=>!briefUsed.has(uniqueKey(s)));
+    if(automatic){briefUsed.add(uniqueKey(automatic));return automatic;}
+    const backup=fallback.find(s=>!briefUsed.has(uniqueKey(s)))||fallback[index%fallback.length];
+    briefUsed.add(uniqueKey(backup));return backup;
+  };
+  const quick=[takeBrief("brief1",0),takeBrief("brief2",1),takeBrief("brief3",2),takeBrief("brief4",3),takeBrief("brief5",4)];
   const heroHref=hero.href||(hero.id?`/artykul/${hero.id}`:"/wiadomosci");
 
   return <>
