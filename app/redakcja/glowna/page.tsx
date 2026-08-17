@@ -43,7 +43,19 @@ export default function HomeLayoutPage(){
 
   const byKey=useMemo(()=>new Map(items.map(i=>[i.key,i])),[items]);
   const valueFor=(slot:string)=>{const v=layout[slot];return v?`${v.source_type}-${v.source_id}`:""};
-  const setSlot=(slot:string,key:string)=>{if(!key){setLayout(p=>({...p,[slot]:undefined}));return;}const item=byKey.get(key);if(item)setLayout(p=>({...p,[slot]:{source_type:item.source_type,source_id:item.source_id}}))};
+  const setSlot=(slot:string,key:string)=>{
+    if(!key){setLayout(p=>({...p,[slot]:undefined}));return;}
+    const item=byKey.get(key);if(!item)return;
+    setLayout(prev=>{
+      const next={...prev};
+      for(const [otherSlot,value] of Object.entries(next)){
+        if(otherSlot!==slot&&value&&`${value.source_type}-${value.source_id}`===key)next[otherSlot]=undefined;
+      }
+      next[slot]={source_type:item.source_type,source_id:item.source_id};
+      return next;
+    });
+    setMessage("Jeśli ten materiał był już w innym slocie, został stamtąd automatycznie usunięty.");
+  };
   const save=async()=>{setBusy(true);setMessage("");try{const {data}=await client().auth.getSession();const token=data.session?.access_token;if(!token)throw new Error("Sesja wygasła.");const clean:Record<string,SlotValue>={};for(const [k,v] of Object.entries(layout))if(v)clean[k]=v;const response=await fetch("/api/redakcja/home-layout",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({slots:clean})});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||"Nie udało się zapisać.");setMessage("UKŁAD GŁÓWNEJ ZAPISANY.");}catch(e){setMessage(e instanceof Error?e.message:"Nie udało się zapisać.");}finally{setBusy(false)}};
 
   if(allowed===null)return <main className="home-layout-admin">ŁADOWANIE…</main>;
