@@ -11,8 +11,7 @@ export default function RedakcjaHome(){
       if(!email){window.location.replace("/redakcja/logowanie");return;}
       const {data:person}=await client.from("staff_accounts").select("active,role").eq("email",email).maybeSingle();
       if(!person?.active){window.location.replace("/redakcja/logowanie");return;}
-      const chief=["editor_in_chief","deputy_editor_in_chief"].includes(person.role);
-      window.location.replace(chief?"/redakcja/dashboard":"/redakcja/material");
+      window.location.replace("/redakcja/dashboard");
     });
   },[]);
   return <main style={{minHeight:"100vh",background:"#111",color:"white",display:"grid",placeItems:"center",fontFamily:"monospace",letterSpacing:"2px"}}>OTWIERAM PANEL…</main>;
