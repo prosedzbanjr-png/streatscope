@@ -33,6 +33,7 @@ function dateLabel(value?: string | null) {
 }
 function timeValue(value?: string | null){const parsed=value?new Date(value).getTime():0;return Number.isFinite(parsed)?parsed:0;}
 function storyKey(type?:Story["source_type"],id?:number){return type&&id?`${type}-${id}`:"";}
+function uniqueKey(story:Story){return story.key||storyKey(story.source_type,story.id)||story.title;}
 
 export function HomeNewsBoard() {
   const [stories,setStories]=useState<Story[]>([]);
@@ -70,7 +71,14 @@ export function HomeNewsBoard() {
   if(loading)return <section className="home-loading" aria-label="Ładowanie najnowszych materiałów"><div className="skeleton skeleton-hero"/><div className="skeleton-side"><div className="skeleton skeleton-line short"/><div className="skeleton skeleton-line"/><div className="skeleton skeleton-line"/><div className="skeleton skeleton-line medium"/></div></section>;
 
   const used=new Set<string>();
-  const take=(slot:string,fallbackIndex:number)=>{const chosen=manual[slot]||stories.find((s,idx)=>idx>=fallbackIndex&&!used.has(s.key||storyKey(s.source_type,s.id)))||stories[fallbackIndex]||fallback[fallbackIndex%fallback.length];const key=chosen.key||storyKey(chosen.source_type,chosen.id)||chosen.title;used.add(key);return chosen;};
+  const take=(slot:string,fallbackIndex:number)=>{
+    const manualChoice=manual[slot];
+    if(manualChoice&&!used.has(uniqueKey(manualChoice))){used.add(uniqueKey(manualChoice));return manualChoice;}
+    const automatic=stories.find((s,idx)=>idx>=fallbackIndex&&!used.has(uniqueKey(s)));
+    if(automatic){used.add(uniqueKey(automatic));return automatic;}
+    const backup=fallback.find(s=>!used.has(uniqueKey(s)))||fallback[fallbackIndex%fallback.length];
+    used.add(uniqueKey(backup));return backup;
+  };
   const hero=take("hero",0);
   const cards=[take("card1",1),take("card2",1),take("card3",1),take("card4",1)];
   const quick=[take("brief1",1),take("brief2",1),take("brief3",1),take("brief4",1),take("brief5",1)];
@@ -79,8 +87,8 @@ export function HomeNewsBoard() {
   return <>
     <section className="home-lead">
       <article className="lead-story"><img src={hero.image_url||"/images/hero.png"} alt=""/><div className="lead-shade"/><div className="lead-copy"><span className="lead-badge">{hero.category||"NAJNOWSZE"}</span><h1>{hero.title}</h1><p>{hero.excerpt||"StreetScope sprawdza, co dzieje się w mieście — bez filtra i bez zbędnego szumu."}</p><div className="lead-meta"><a href={heroHref}>CZYTAJ WIĘCEJ <b>→</b></a><span>{dateLabel(hero.published_at)}</span></div></div></article>
-      <aside className="news-brief"><div className="brief-head"><b>REDAKCYJNY SKRÓT</b><span>NAJNOWSZE ZE STREETSCOPE</span></div><div className="brief-list">{quick.map((story,index)=><a href={story.href||"/wiadomosci"} key={`${story.key||story.title}-${index}`}><small>{index===0?"TERAZ":`0${index+1}`}</small><strong>{story.title}</strong></a>)}</div><a className="brief-all" href="#stories">NAJNOWSZE MATERIAŁY <b>↓</b></a></aside>
+      <aside className="news-brief"><div className="brief-head"><b>REDAKCYJNY SKRÓT</b><span>NAJNOWSZE ZE STREETSCOPE</span></div><div className="brief-list">{quick.map((story,index)=><a href={story.href||"/wiadomosci"} key={`${uniqueKey(story)}-${index}`}><small>{index===0?"TERAZ":`0${index+1}`}</small><strong>{story.title}</strong></a>)}</div><a className="brief-all" href="#stories">NAJNOWSZE MATERIAŁY <b>↓</b></a></aside>
     </section>
-    <section className="latest-board" id="stories"><div className="board-title"><div><i/><h2>NAJNOWSZE</h2></div><a href="/wiadomosci">WIADOMOŚCI →</a></div><div className="latest-grid">{cards.map((story,index)=>{const href=story.href||"/wiadomosci";return <article className="latest-card" key={`${story.key||story.title}-${index}`}><a href={href} className="latest-image"><img src={story.image_url||["/images/hq.png","/images/mural.png","/images/hero.png"][index%3]} alt=""/><span>{story.category}</span></a><div className="latest-meta"><span>{dateLabel(story.published_at)}</span><b>•</b><span>STREETSCOPE</span></div><h3><a href={href}>{story.title}</a></h3><p>{story.excerpt||"Najważniejsze informacje, kontekst i relacja z miejsca wydarzeń."}</p><a className="latest-arrow" href={href}>→</a></article>})}</div></section>
+    <section className="latest-board" id="stories"><div className="board-title"><div><i/><h2>NAJNOWSZE</h2></div><a href="/wiadomosci">WIADOMOŚCI →</a></div><div className="latest-grid">{cards.map((story,index)=>{const href=story.href||"/wiadomosci";return <article className="latest-card" key={`${uniqueKey(story)}-${index}`}><a href={href} className="latest-image"><img src={story.image_url||["/images/hq.png","/images/mural.png","/images/hero.png"][index%3]} alt=""/><span>{story.category}</span></a><div className="latest-meta"><span>{dateLabel(story.published_at)}</span><b>•</b><span>STREETSCOPE</span></div><h3><a href={href}>{story.title}</a></h3><p>{story.excerpt||"Najważniejsze informacje, kontekst i relacja z miejsca wydarzeń."}</p><a className="latest-arrow" href={href}>→</a></article>})}</div></section>
   </>;
 }
