@@ -18,19 +18,18 @@ async function getArticle(id: string): Promise<ArticleMeta | null> {
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const article = await getArticle(id);
-  const canonical = `https://streatscope.vercel.app/artykul/${id}`;
-  if (!article) return { title: "Materiał niedostępny | StreetScope", description: "StreetScope — niezależne relacje z miasta.", robots: { index: false, follow: false } };
+  const canonical = `https://streetscope.vercel.app/artykul/${id}`;
+  if (!article) return { title: "Materiał niedostępny", description: "StreetScope — niezależne relacje z miasta.", robots: { index: false, follow: false } };
   const image = article.social_image || article.image_url || "/images/hero.png";
   const socialTitle = article.social_title || article.title;
   const description = article.social_description || article.excerpt;
-  const title = `${socialTitle} | StreetScope`;
   return {
-    title,
+    title: socialTitle,
     description,
     alternates: { canonical },
     authors: article.author_name ? [{ name: article.author_name }] : [{ name: "StreetScope" }],
-    openGraph: { title, description, type: "article", url: canonical, siteName: "StreetScope", images: [{ url: image, alt: socialTitle }], section: article.category, publishedTime: article.published_at || undefined, authors: article.author_name ? [article.author_name] : ["StreetScope"] },
-    twitter: { card: "summary_large_image", title, description, images: [image] },
+    openGraph: { title: `${socialTitle} | StreetScope`, description, type: "article", url: canonical, siteName: "StreetScope", images: [{ url: image, alt: socialTitle }], section: article.category, publishedTime: article.published_at || undefined, authors: article.author_name ? [article.author_name] : ["StreetScope"] },
+    twitter: { card: "summary_large_image", title: `${socialTitle} | StreetScope`, description, images: [image] },
     robots: { index: true, follow: true },
   };
 }
