@@ -13,15 +13,14 @@ export default function MarketPage(){
  const filtered=useMemo(()=>rows.filter(v=>(status==="all"||v.status===status)&&`${v.brand} ${v.model}`.toLowerCase().includes(q.toLowerCase())),[rows,q,status]);
  return <main className="market">
   <header className="market-nav"><a href="/" className="market-logo">STREET<span>SCOPE</span></a><nav><a className="active" href="/market">MARKET</a><a href="/market/licytacje">LICYTACJE</a></nav></header>
-  <section className="market-hero market-hero-split">
+  <section className="market-hero market-hero-background">
    <div className="market-hero-copy"><p>STREETSCOPE × TOW & TRADE</p><h1>TOW &<br/><em>TRADE.</em></h1><span>Samochody dostępne w salonie Tow & Trade.</span></div>
-   <div className="market-hero-logo"><img src="/tow-trade-logo.webp" alt="Tow & Trade"/></div>
   </section>
   <section className="market-showroom-note"><div><small>NIE WIDZISZ SWOJEGO WYMARZONEGO AUTA NA NASZEJ STRONIE?</small><h2>TO JESZCZE NIE ZNACZY, ŻE GO NIE MAMY.</h2><p>Posiadamy dostęp do <strong>szerokiej gamy pojazdów</strong>, również tych, których nie znajdziesz w naszej ofercie online. Odwiedź nas przy <strong>Little Bighorn Ave</strong>. Zapytaj sprzedawcę o dostępne pojazdy oraz <strong>indywidualną ofertę</strong>.</p><b>Twoje wymarzone auto może być bliżej, niż myślisz.</b></div></section>
   <section className="market-tools"><input placeholder="SZUKAJ MARKI / MODELU" value={q} onChange={e=>setQ(e.target.value)}/><select value={status} onChange={e=>setStatus(e.target.value)}><option value="available">NA SPRZEDAŻ</option><option value="reserved">ZAREZERWOWANE</option><option value="sold">SPRZEDANE</option><option value="all">WSZYSTKIE</option></select></section>
-  <section className="market-content-split">
+  <section className="market-content-background">
    <div className="market-grid market-grid-main">{filtered.map(v=><a className={`vehicle-card ${v.status}`} href={`/market/${v.id}`} key={v.id}><div className="vehicle-photo" style={v.image_url?{backgroundImage:`url(${v.image_url})`}:undefined}>{v.featured&&<b>WYRÓŻNIONE</b>}<span>{v.status==="sold"?"SPRZEDANE":v.status==="reserved"?"ZAREZERWOWANE":"NA SPRZEDAŻ"}</span></div><div className="vehicle-info"><small>{v.year||"—"}{v.mileage!=null?` · ${v.mileage.toLocaleString("pl-PL")} MI`:""}</small><h2>{v.brand} {v.model}</h2><p>{[v.drivetrain,v.transmission].filter(Boolean).join(" · ")||"TOW & TRADE"}</p><strong>CENA · ${Number(v.price||0).toLocaleString("en-US")}</strong></div></a>)}{filtered.length===0&&<div className="market-empty">BRAK OFERT PASUJĄCYCH DO FILTRÓW.</div>}</div>
-   <aside className="market-yard-card"><img src="/tow-trade-yard.webp" alt="Tow & Trade — Little Bighorn Ave"/><div><small>NASZA LOKALIZACJA</small><h3>LITTLE BIGHORN AVE</h3><p>Wpadnij na plac, pogadaj ze sprzedawcą i sprawdź auta, których nie ma jeszcze online.</p></div></aside>
+   <div className="market-yard-overlay"><small>NASZA LOKALIZACJA</small><h3>LITTLE BIGHORN AVE</h3><p>Wpadnij na plac, pogadaj ze sprzedawcą i sprawdź auta, których nie ma jeszcze online.</p></div>
   </section>
   <footer className="market-footer"><b>TOW & TRADE</b><span>We współpracy ze StreetScope.</span></footer>
  </main>;
