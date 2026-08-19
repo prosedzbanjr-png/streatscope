@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "../../lib/supabase";
 import "./market.css";
+import "./market-promo.css";
 
 type Vehicle={id:number;brand:string;model:string;year:number|null;price:number;mileage:number|null;image_url:string|null;status:string;featured:boolean;drivetrain:string|null;transmission:string|null;sale_mode:"sale"|"auction";auction_start_price:number|null;auction_min_increment:number|null;auction_current_bid:number|null;auction_bid_count:number|null;auction_ends_at:string|null};
 
