@@ -23,11 +23,35 @@ create table if not exists public.market_vehicles (
 
 alter table public.market_vehicles enable row level security;
 
+-- Uprawnienia tabeli. Same polityki RLS nie wystarczą, jeśli rola nie ma GRANT.
+grant select on table public.market_vehicles to anon, authenticated;
+grant insert, update, delete on table public.market_vehicles to authenticated;
+
+-- Identity korzysta z sekwencji. Nadajemy dostęp jawnie, żeby INSERT nie kończył się błędem permissions.
+do $$
+declare
+  seq_name text;
+begin
+  select pg_get_serial_sequence('public.market_vehicles', 'id') into seq_name;
+  if seq_name is not null then
+    execute format('grant usage, select on sequence %s to authenticated', seq_name);
+  end if;
+end $$;
+
 drop policy if exists "market public read" on public.market_vehicles;
-create policy "market public read" on public.market_vehicles for select using (true);
+create policy "market public read"
+on public.market_vehicles
+for select
+to anon, authenticated
+using (true);
 
 drop policy if exists "market auth write" on public.market_vehicles;
-create policy "market auth write" on public.market_vehicles for all to authenticated using (true) with check (true);
+create policy "market auth write"
+on public.market_vehicles
+for all
+to authenticated
+using (true)
+with check (true);
 
 create index if not exists market_vehicles_status_idx on public.market_vehicles(status);
 create index if not exists market_vehicles_created_at_idx on public.market_vehicles(created_at desc);
