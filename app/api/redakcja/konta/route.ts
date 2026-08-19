@@ -1,7 +1,7 @@
 import { checkRateLimit, jsonError } from "../../../../lib/server-security";
 
 const clean = (value: unknown, max: number) => typeof value === "string" ? value.trim().slice(0, max) : "";
-const allowedRoles = new Set(["editor_in_chief", "deputy_editor_in_chief", "journalist"]);
+const allowedRoles = new Set(["editor_in_chief", "deputy_editor_in_chief", "journalist", "dealer"]);
 
 async function getCaller(url: string, anonKey: string, token: string) {
   const response = await fetch(`${url}/auth/v1/user`, {
