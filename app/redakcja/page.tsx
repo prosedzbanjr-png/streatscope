@@ -11,6 +11,7 @@ export default function RedakcjaHome(){
       if(!email){window.location.replace("/redakcja/logowanie");return;}
       const {data:person}=await client.from("staff_accounts").select("active,role").eq("email",email).maybeSingle();
       if(!person?.active){window.location.replace("/redakcja/logowanie");return;}
+      if(person.role==="dealer"){window.location.replace("/redakcja/market");return;}
       window.location.replace("/redakcja/dashboard");
     });
   },[]);
