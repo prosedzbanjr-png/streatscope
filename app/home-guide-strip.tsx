@@ -32,15 +32,30 @@ export function HomeGuideStrip() {
     (async () => {
       try {
         const supabase = getSupabase();
-        const { data } = await supabase
+        const select = "id,name,category,neighborhood,short_description,image_url,price_level,featured_label";
+        const { data: promoted } = await supabase
           .from("guide_places")
-          .select("id,name,category,neighborhood,short_description,image_url,price_level,featured_label")
+          .select(select)
           .eq("active", true)
+          .is("archived_at", null)
           .eq("featured_home", true)
           .order("featured_order", { ascending: true })
           .order("created_at", { ascending: false })
           .limit(3);
-        if (alive) setPlaces((data as GuidePlace[] | null) ?? []);
+
+        let result = (promoted as GuidePlace[] | null) ?? [];
+        if (result.length === 0) {
+          const { data: fallback } = await supabase
+            .from("guide_places")
+            .select(select)
+            .eq("active", true)
+            .is("archived_at", null)
+            .order("featured", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(3);
+          result = (fallback as GuidePlace[] | null) ?? [];
+        }
+        if (alive) setPlaces(result);
       } catch {
         if (alive) setPlaces([]);
       }
@@ -55,9 +70,9 @@ export function HomeGuideStrip() {
     </div>
 
     {places.length > 0 ? <div className="scope-guide-home__grid">
-      {places.map(place => <a className="scope-guide-home__card" href={`/guide#place-${place.id}`} key={place.id}>
+      {places.map(place => <a className="scope-guide-home__card" href={`/guide/${place.id}`} key={place.id}>
         <div className="scope-guide-home__image" style={place.image_url ? { backgroundImage: `url(${place.image_url})` } : undefined}>
-          <span>{place.featured_label || "PROMOWANE"}</span>
+          <span>{place.featured_label || "SCOPE GUIDE"}</span>
         </div>
         <div className="scope-guide-home__body">
           <small>{categoryLabel[place.category] || place.category}{place.neighborhood ? ` · ${place.neighborhood}` : ""}</small>
@@ -67,7 +82,7 @@ export function HomeGuideStrip() {
         </div>
       </a>)}
     </div> : <div className="scope-guide-home__empty">
-      <div><span>NOWOŚĆ</span><h3>SCOPE GUIDE</h3><p>Wkrótce pojawią się tutaj promowane miejsca z Los Santos.</p></div>
+      <div><span>NOWOŚĆ</span><h3>SCOPE GUIDE</h3><p>Wkrótce pojawią się tutaj miejsca z Los Santos.</p></div>
       <a href="/guide">ZOBACZ GUIDE →</a>
     </div>}
   </section>;

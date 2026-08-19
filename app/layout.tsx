@@ -4,10 +4,13 @@ import "./pages.css";
 import { ThemeToggle } from "./theme-toggle";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://streatscope.vercel.app"),
-  title: "StreetScope | News That Hits Home",
+  metadataBase: new URL("https://streetscope.vercel.app"),
+  title: {
+    default: "StreetScope | News That Hits Home",
+    template: "%s | StreetScope",
+  },
   description: "StreetScope — niezależna redakcja z Los Santos. Wiadomości, ulica, kultura i historie mieszkańców.",
-  alternates: { canonical: "https://streatscope.vercel.app" },
+  alternates: { canonical: "https://streetscope.vercel.app" },
   robots: { index: true, follow: true },
   keywords: ["StreetScope", "Los Santos", "wiadomości", "miasto", "relacje"],
   openGraph: {
@@ -16,10 +19,15 @@ export const metadata: Metadata = {
     siteName: "StreetScope",
     locale: "pl_PL",
     type: "website",
-    url: "https://streatscope.vercel.app",
+    url: "https://streetscope.vercel.app",
     images: [{ url: "/images/hero.png", width: 900, height: 600, alt: "StreetScope" }],
   },
-  twitter: { card: "summary_large_image", title: "StreetScope", description: "News That Hits Home" },
+  twitter: {
+    card: "summary_large_image",
+    title: "StreetScope | News That Hits Home",
+    description: "Niezależne relacje z miasta. Tematy, które trafiają w punkt.",
+    images: ["/images/hero.png"],
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
