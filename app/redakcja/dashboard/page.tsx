@@ -79,7 +79,14 @@ export default function DashboardPage(){
       <a href="/redakcja/market"><span>TOW & TRADE</span><b>T&T</b><em>WYSTAW AUTO · EDYTUJ · SOLD →</em></a>
       <a href="/redakcja/guide"><span>SCOPE GUIDE</span><b>LS</b><em>MIEJSCA & PROMO →</em></a>
       <a href="/redakcja/statystyki"><span>OPUBLIKOWANE</span><b>{counts.published}</b><em>STATYSTYKI →</em></a>
-      {isChief&&<><a href="/redakcja/zarzadzaj"><span>DO AKCEPTACJI</span><b>{counts.review}</b><em>OTWÓRZ KOLEJKĘ →</em></a><a href="/redakcja/zarzadzaj"><span>AKTYWNE ZGŁOSZENIA</span><b>{counts.tips}</b><em>PRZEJRZYJ →</em></a>}{isChief&&<><a href="/redakcja/rekrutacja"><span>NOWE REKRUTACJE</span><b>{counts.recruitment}</b><em>PRZEJRZYJ →</em></a><a href="/redakcja/zarzadzaj"><span>ZAPLANOWANE</span><b>{counts.scheduled}</b><em>HARMONOGRAM →</em></a><a href="/redakcja/zespol"><span>AKTYWNY ZESPÓŁ</span><b>{counts.staff}</b><em>ZARZĄDZAJ →</em></a><a href="/redakcja/archiwum"><span>ARCHIWUM</span><b>{counts.archivedMaterials+counts.archivedTips}</b><em>{counts.archivedMaterials} materiałów · {counts.archivedTips} zgłoszeń →</em></a></>}
+      {isChief&&<>
+        <a href="/redakcja/zarzadzaj"><span>DO AKCEPTACJI</span><b>{counts.review}</b><em>OTWÓRZ KOLEJKĘ →</em></a>
+        <a href="/redakcja/zarzadzaj"><span>AKTYWNE ZGŁOSZENIA</span><b>{counts.tips}</b><em>PRZEJRZYJ →</em></a>
+        <a href="/redakcja/rekrutacja"><span>NOWE REKRUTACJE</span><b>{counts.recruitment}</b><em>PRZEJRZYJ →</em></a>
+        <a href="/redakcja/zarzadzaj"><span>ZAPLANOWANE</span><b>{counts.scheduled}</b><em>HARMONOGRAM →</em></a>
+        <a href="/redakcja/zespol"><span>AKTYWNY ZESPÓŁ</span><b>{counts.staff}</b><em>ZARZĄDZAJ →</em></a>
+        <a href="/redakcja/archiwum"><span>ARCHIWUM</span><b>{counts.archivedMaterials+counts.archivedTips}</b><em>{counts.archivedMaterials} materiałów · {counts.archivedTips} zgłoszeń →</em></a>
+      </>}
     </section>
 
     {isChief&&<section className="dashboard-bottom"><div><p className="kicker"><i/> OSTATNIA AKTYWNOŚĆ</p>{logs.length?<div className="recent-logs">{logs.map(row=><article key={row.id}><span>{actionLabel[row.action]||row.action}</span><b>{row.entity_label||row.entity_type}</b><small>{row.actor_email} · {new Date(row.created_at).toLocaleString("pl-PL")}</small></article>)}</div>:<p>Brak zapisanych działań.</p>}<a className="logs-link" href="/redakcja/logi">PEŁNY DZIENNIK DZIAŁAŃ →</a></div><aside><p className="kicker"><i/> SKRÓTY</p><a href="/redakcja/materialy">WSZYSTKIE MATERIAŁY</a><a href="/redakcja/material">+ NOWY ARTYKUŁ</a><a href="/redakcja/kultura">FASHION / MOTOR</a><a href="/redakcja/market">TOW & TRADE</a><a href="/redakcja/guide">SCOPE GUIDE / PROMO</a><a href="/redakcja/rekrutacja">REKRUTACJA</a><a href="/redakcja/archiwum">ARCHIWUM</a><a href="/redakcja/zespol">ZESPÓŁ</a><a href="/redakcja/statystyki">STATYSTYKI</a></aside></section>}
