@@ -1,5 +1,8 @@
--- Tow & Trade: automatycznie zapisuj imię i nazwisko pracownika wystawiającego NOWĄ ofertę.
--- Wykorzystuje istniejące pole market_vehicles.seller_name, więc nie wymaga nowej kolumny.
+-- Tow & Trade: osobne pole dla pracownika wystawiającego ofertę/licytację.
+-- seller_name pozostaje faktycznym sprzedającym, więc zwykłe oferty działają normalnie.
+
+alter table public.market_vehicles
+add column if not exists listed_by_name text;
 
 create or replace function public.set_market_listing_employee()
 returns trigger
@@ -23,11 +26,10 @@ begin
   limit 1;
 
   if found then
-    new.seller_name := coalesce(
+    new.listed_by_name := coalesce(
       nullif(trim(concat_ws(' ', staff_first, staff_last)), ''),
       nullif(trim(staff_display), ''),
-      staff_email,
-      'Tow & Trade'
+      staff_email
     );
   end if;
 
