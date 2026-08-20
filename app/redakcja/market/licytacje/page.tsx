@@ -1,248 +1,51 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabase } from "../../../../lib/supabase";
 import "../market-admin.css";
 
-type V = {
-  id:number; brand:string; model:string; year:number|null; price:number; mileage:number|null;
-  drivetrain:string|null; transmission:string|null; engine:string|null; color:string|null;
-  description:string|null; image_url:string|null; gallery:string[]|null; seller_name:string|null;
-  seller_phone:string|null; status:string; featured:boolean; auction_start_price:number|null;
-  auction_min_increment:number|null; auction_current_bid:number|null; auction_bid_count:number|null;
-  auction_ends_at:string|null; auction_deposit_amount:number|null; auction_bank_account:string|null;
-};
+type V={id:number;brand:string;model:string;year:number|null;price:number;mileage:number|null;drivetrain:string|null;transmission:string|null;engine:string|null;color:string|null;description:string|null;image_url:string|null;gallery:string[]|null;seller_name:string|null;seller_phone:string|null;listed_by_name:string|null;status:string;featured:boolean;auction_start_price:number|null;auction_min_increment:number|null;auction_current_bid:number|null;auction_bid_count:number|null;auction_ends_at:string|null;auction_deposit_amount:number|null;auction_bank_account:string|null};
+type Registration={id:number;vehicle_id:number;bidder_name:string;bidder_phone:string|null;status:"pending"|"approved"|"rejected";created_at:string;approved_at:string|null};
+type Bid={vehicle_id:number;bidder_name:string;amount:number;created_at:string};
 
-type Registration = {
-  id:number; vehicle_id:number; bidder_name:string; bidder_phone:string|null;
-  status:"pending"|"approved"|"rejected"; created_at:string; approved_at:string|null;
-};
-
-type Bid = { vehicle_id:number; bidder_name:string; amount:number; created_at:string };
-
-const empty = {
-  brand:"", model:"", year:"", price:"", mileage:"", drivetrain:"", transmission:"", engine:"", color:"",
-  description:"", seller_name:"Tow & Trade", seller_phone:"", status:"available", featured:false,
-  auction_start_price:"", auction_min_increment:"500", auction_ends_at:"", auction_deposit_amount:"5000", auction_bank_account:""
-};
-
-function toLocalInput(value:string|null){
-  if(!value) return "";
-  const d = new Date(value);
-  const pad = (n:number)=>String(n).padStart(2,"0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function parseNum(value:unknown,fallback:number|null=null){
-  const raw = String(value??"").replace(/[\s,]/g,"");
-  if(!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n)?n:fallback;
-}
+const empty={brand:"",model:"",year:"",price:"",mileage:"",drivetrain:"",transmission:"",engine:"",color:"",description:"",seller_name:"Tow & Trade",seller_phone:"",status:"available",featured:false,auction_start_price:"",auction_min_increment:"500",auction_ends_at:"",auction_deposit_amount:"5000",auction_bank_account:""};
+function toLocalInput(value:string|null){if(!value)return "";const d=new Date(value),pad=(n:number)=>String(n).padStart(2,"0");return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`}
+function parseNum(value:unknown,fallback:number|null=null){const raw=String(value??"").replace(/[\s,]/g,"");if(!raw)return fallback;const n=Number(raw);return Number.isFinite(n)?n:fallback}
 
 export default function AuctionAdmin(){
-  const [allowed,setAllowed]=useState<boolean|null>(null);
-  const [rows,setRows]=useState<V[]>([]);
-  const [registrations,setRegistrations]=useState<Registration[]>([]);
-  const [winners,setWinners]=useState<Record<number,{name:string;amount:number}>>({});
-  const [form,setForm]=useState<any>(empty);
-  const [editing,setEditing]=useState<number|null>(null);
-  const [cover,setCover]=useState<File|null>(null);
-  const [gallery,setGallery]=useState<File[]>([]);
-  const [existingCover,setExistingCover]=useState("");
-  const [existingGallery,setExistingGallery]=useState<string[]>([]);
-  const [message,setMessage]=useState("");
-  const [busy,setBusy]=useState(false);
-  const [actionId,setActionId]=useState<number|null>(null);
-  const s=()=>getSupabase();
+ const [allowed,setAllowed]=useState<boolean|null>(null),[rows,setRows]=useState<V[]>([]),[registrations,setRegistrations]=useState<Registration[]>([]),[winners,setWinners]=useState<Record<number,{name:string;amount:number}>>({}),[form,setForm]=useState<any>(empty),[editing,setEditing]=useState<number|null>(null),[cover,setCover]=useState<File|null>(null),[gallery,setGallery]=useState<File[]>([]),[existingCover,setExistingCover]=useState(""),[existingGallery,setExistingGallery]=useState<string[]>([]),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[actionId,setActionId]=useState<number|null>(null),[search,setSearch]=useState("");
+ const s=()=>getSupabase();
 
-  const load=async()=>{
-    const [{data,error},{data:regs,error:regErr},{data:bidRows,error:bidErr}] = await Promise.all([
-      s().from("market_vehicles").select("*").eq("sale_mode","auction").order("created_at",{ascending:false}),
-      s().from("market_auction_registrations").select("id,vehicle_id,bidder_name,bidder_phone,status,created_at,approved_at").order("created_at",{ascending:false}),
-      s().from("market_auction_bids").select("vehicle_id,bidder_name,amount,created_at").order("amount",{ascending:false}).order("created_at",{ascending:false})
-    ]);
+ const load=async()=>{
+   const {data,error}=await s().from("market_vehicles").select("*").eq("sale_mode","auction").order("created_at",{ascending:false});
+   if(error){setMessage(`BŁĄD: ${error.message}`);return}
+   const auctionRows=(data as V[]|null)??[];setRows(auctionRows);
+   if(!auctionRows.length){setRegistrations([]);setWinners({});return}
+   const activeIds=auctionRows.filter(v=>v.status!=="sold"&&!(v.auction_ends_at&&new Date(v.auction_ends_at).getTime()<=Date.now())).map(v=>v.id);
+   const closedIds=auctionRows.filter(v=>v.status==="sold"||Boolean(v.auction_ends_at&&new Date(v.auction_ends_at).getTime()<=Date.now())).map(v=>v.id);
+   const regPromise=activeIds.length?s().from("market_auction_registrations").select("id,vehicle_id,bidder_name,bidder_phone,status,created_at,approved_at").in("vehicle_id",activeIds).order("created_at",{ascending:false}).limit(250):Promise.resolve({data:[],error:null} as any);
+   const bidPromise=closedIds.length?s().from("market_auction_bids").select("vehicle_id,bidder_name,amount,created_at").in("vehicle_id",closedIds).order("amount",{ascending:false}).order("created_at",{ascending:false}).limit(1500):Promise.resolve({data:[],error:null} as any);
+   const [{data:regs,error:regErr},{data:bidRows,error:bidErr}]=await Promise.all([regPromise,bidPromise]);
+   if(!regErr)setRegistrations((regs as Registration[]|null)??[]);
+   if(!bidErr){const map:Record<number,{name:string;amount:number}>={};for(const bid of ((bidRows as Bid[]|null)??[])){if(!map[bid.vehicle_id])map[bid.vehicle_id]={name:bid.bidder_name,amount:Number(bid.amount)}}setWinners(map)}
+ };
 
-    const auctionRows = (data as V[]|null)??[];
-    if(error) setMessage(`BŁĄD: ${error.message}`); else setRows(auctionRows);
+ useEffect(()=>{(async()=>{const {data}=await s().auth.getUser();if(!data.user){setAllowed(false);return}setAllowed(true);await load()})()},[]);
+ const carById=useMemo(()=>new Map(rows.map(v=>[v.id,v])),[rows]);
+ const filteredRows=useMemo(()=>{const q=search.trim().toLowerCase();if(!q)return rows;return rows.filter(v=>`${v.brand} ${v.model} ${String(v.id).padStart(4,"0")} ${v.listed_by_name||""}`.toLowerCase().includes(q))},[rows,search]);
+ const pendingCount=useMemo(()=>registrations.filter(r=>r.status==="pending").length,[registrations]);
+ const valid=(f:File)=>f.type.startsWith("image/")&&f.size<=8*1024*1024;
+ const upload=async(f:File)=>{if(!valid(f))throw new Error("Zdjęcie musi mieć maks. 8 MB.");const ext=f.name.split(".").pop()||"jpg",path=`auction-${Date.now()}-${crypto.randomUUID()}.${ext}`;const {error}=await s().storage.from("article-images").upload(path,f,{contentType:f.type});if(error)throw error;return s().storage.from("article-images").getPublicUrl(path).data.publicUrl};
+ const onGallery=(e:ChangeEvent<HTMLInputElement>)=>{const files=Array.from(e.target.files||[]).filter(valid);setGallery(files.slice(0,Math.max(0,8-existingGallery.length)));e.target.value=""};
+ const save=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setMessage("");try{const start=parseNum(form.auction_start_price),increment=Math.max(1,parseNum(form.auction_min_increment,500)??500),deposit=Math.max(0,parseNum(form.auction_deposit_amount,5000)??5000);if(start===null||start<0)throw new Error("Podaj poprawną cenę startową.");const endDate=new Date(form.auction_ends_at);if(Number.isNaN(endDate.getTime())||(!editing&&endDate.getTime()<=Date.now()))throw new Error("Koniec nowej licytacji musi być w przyszłości.");const image_url=cover?await upload(cover):existingCover||null,fresh:string[]=[];for(const f of gallery)fresh.push(await upload(f));const payload={brand:form.brand.trim(),model:form.model.trim(),year:parseNum(form.year),price:parseNum(form.price,0)??0,mileage:parseNum(form.mileage),drivetrain:form.drivetrain||null,transmission:form.transmission||null,engine:form.engine||null,color:form.color||null,description:form.description||null,image_url,gallery:[...existingGallery,...fresh].slice(0,8),seller_name:form.seller_name||"Tow & Trade",seller_phone:form.seller_phone||null,status:form.status,featured:Boolean(form.featured),sale_mode:"auction",auction_start_price:start,auction_min_increment:increment,auction_ends_at:endDate.toISOString(),auction_deposit_amount:deposit,auction_bank_account:form.auction_bank_account||null,updated_at:new Date().toISOString()};const res=editing?await s().from("market_vehicles").update(payload).eq("id",editing):await s().from("market_vehicles").insert({...payload,auction_current_bid:null,auction_bid_count:0});if(res.error)throw res.error;setMessage(editing?"LICYTACJA ZAKTUALIZOWANA.":"LICYTACJA WYSTAWIONA.");setForm(empty);setEditing(null);setCover(null);setGallery([]);setExistingCover("");setExistingGallery([]);await load()}catch(err){setMessage(`BŁĄD: ${err instanceof Error?err.message:"Nie udało się zapisać licytacji."}`)}finally{setBusy(false)}};
+ const edit=(v:V)=>{setEditing(v.id);setForm({...v,year:v.year??"",mileage:v.mileage??"",auction_start_price:v.auction_start_price??"",auction_min_increment:v.auction_min_increment??500,auction_ends_at:toLocalInput(v.auction_ends_at),auction_deposit_amount:v.auction_deposit_amount??5000,auction_bank_account:v.auction_bank_account??""});setExistingCover(v.image_url||"");setExistingGallery(v.gallery||[]);setMessage(`EDYTUJESZ LICYTACJĘ #${String(v.id).padStart(4,"0")}.`);window.scrollTo({top:0,behavior:"smooth"})};
+ const setStatus=async(v:V,status:"available"|"sold")=>{if(actionId!==null)return;setActionId(v.id);setMessage("");try{const {error}=await s().from("market_vehicles").update({status,updated_at:new Date().toISOString()}).eq("id",v.id);if(error)throw error;setRows(prev=>prev.map(row=>row.id===v.id?{...row,status}:row));setMessage(status==="available"?`LICYTACJA #${String(v.id).padStart(4,"0")} AKTYWOWANA.`:`LICYTACJA #${String(v.id).padStart(4,"0")} ZAKOŃCZONA.`);void load()}catch(err){setMessage(`BŁĄD: ${err instanceof Error?err.message:"Nie udało się zmienić statusu."}`)}finally{setActionId(null)}};
+ const removeAuction=async(v:V)=>{if(actionId!==null||!window.confirm(`Usunąć licytację #${String(v.id).padStart(4,"0")} — ${v.brand} ${v.model}?\n\nZniknie razem z historią ofert i zgłoszeniami.`))return;setActionId(v.id);setMessage("");try{let res=await s().from("market_auction_bids").delete().eq("vehicle_id",v.id);if(res.error)throw res.error;res=await s().from("market_auction_registrations").delete().eq("vehicle_id",v.id);if(res.error)throw res.error;res=await s().from("market_vehicles").delete().eq("id",v.id);if(res.error)throw res.error;setRows(prev=>prev.filter(row=>row.id!==v.id));setRegistrations(prev=>prev.filter(r=>r.vehicle_id!==v.id));if(editing===v.id){setEditing(null);setForm(empty);setExistingCover("");setExistingGallery([]);setCover(null);setGallery([])}setMessage(`LICYTACJA #${String(v.id).padStart(4,"0")} USUNIĘTA.`)}catch(err){setMessage(`BŁĄD USUWANIA: ${err instanceof Error?err.message:"Nie udało się usunąć licytacji."}`)}finally{setActionId(null)}};
+ const review=async(r:Registration,status:"approved"|"rejected")=>{setBusy(true);const {data:user}=await s().auth.getUser();const {error}=await s().from("market_auction_registrations").update({status,approved_at:status==="approved"?new Date().toISOString():null,approved_by:status==="approved"?user.user?.id:null}).eq("id",r.id);if(!error)setRegistrations(prev=>prev.map(x=>x.id===r.id?{...x,status,approved_at:status==="approved"?new Date().toISOString():null}:x));setMessage(error?`BŁĄD: ${error.message}`:status==="approved"?"UCZESTNIK ZAAKCEPTOWANY.":"ZGŁOSZENIE ODRZUCONE.");setBusy(false)};
 
-    if(!regErr){
-      const activeIds = new Set(
-        auctionRows
-          .filter(v=>v.status!=="sold" && !(v.auction_ends_at && new Date(v.auction_ends_at)<=new Date()))
-          .map(v=>v.id)
-      );
-      setRegistrations(((regs as Registration[]|null)??[]).filter(r=>activeIds.has(r.vehicle_id)));
-    }
-
-    if(!bidErr){
-      const map:Record<number,{name:string;amount:number}> = {};
-      for(const bid of ((bidRows as Bid[]|null)??[])){
-        if(!map[bid.vehicle_id]) map[bid.vehicle_id]={name:bid.bidder_name,amount:Number(bid.amount)};
-      }
-      setWinners(map);
-    }
-  };
-
-  useEffect(()=>{(async()=>{
-    const {data}=await s().auth.getUser();
-    if(!data.user){setAllowed(false);return;}
-    setAllowed(true);
-    await load();
-  })()},[]);
-
-  const valid=(f:File)=>f.type.startsWith("image/")&&f.size<=8*1024*1024;
-  const upload=async(f:File)=>{
-    if(!valid(f)) throw new Error("Zdjęcie musi mieć maks. 8 MB.");
-    const ext=f.name.split(".").pop()||"jpg";
-    const path=`auction-${Date.now()}-${crypto.randomUUID()}.${ext}`;
-    const {error}=await s().storage.from("article-images").upload(path,f,{contentType:f.type});
-    if(error) throw error;
-    return s().storage.from("article-images").getPublicUrl(path).data.publicUrl;
-  };
-
-  const onGallery=(e:ChangeEvent<HTMLInputElement>)=>{
-    const files=Array.from(e.target.files||[]).filter(valid);
-    setGallery(files.slice(0,Math.max(0,8-existingGallery.length)));
-    e.target.value="";
-  };
-
-  const save=async(e:FormEvent)=>{
-    e.preventDefault(); setBusy(true); setMessage("");
-    try{
-      const start=parseNum(form.auction_start_price);
-      const increment=Math.max(1,parseNum(form.auction_min_increment,500)??500);
-      const deposit=Math.max(0,parseNum(form.auction_deposit_amount,5000)??5000);
-      if(start===null||start<0) throw new Error("Podaj poprawną cenę startową.");
-      const endDate=new Date(form.auction_ends_at);
-      if(Number.isNaN(endDate.getTime())||endDate.getTime()<=Date.now()) throw new Error("Koniec licytacji musi być w przyszłości.");
-      const image_url=cover?await upload(cover):existingCover||null;
-      const fresh:string[]=[]; for(const f of gallery) fresh.push(await upload(f));
-      const payload={
-        brand:form.brand.trim(), model:form.model.trim(), year:parseNum(form.year), price:parseNum(form.price,0)??0,
-        mileage:parseNum(form.mileage), drivetrain:form.drivetrain||null, transmission:form.transmission||null,
-        engine:form.engine||null, color:form.color||null, description:form.description||null, image_url,
-        gallery:[...existingGallery,...fresh].slice(0,8), seller_name:form.seller_name||"Tow & Trade",
-        seller_phone:form.seller_phone||null, status:form.status, featured:Boolean(form.featured), sale_mode:"auction",
-        auction_start_price:start, auction_min_increment:increment, auction_ends_at:endDate.toISOString(),
-        auction_deposit_amount:deposit, auction_bank_account:form.auction_bank_account||null, updated_at:new Date().toISOString()
-      };
-      const res=editing
-        ? await s().from("market_vehicles").update(payload).eq("id",editing)
-        : await s().from("market_vehicles").insert({...payload,auction_current_bid:null,auction_bid_count:0});
-      if(res.error) throw res.error;
-      setMessage(editing?"LICYTACJA ZAKTUALIZOWANA.":"LICYTACJA WYSTAWIONA.");
-      setForm(empty); setEditing(null); setCover(null); setGallery([]); setExistingCover(""); setExistingGallery([]);
-      await load();
-    }catch(err){setMessage(`BŁĄD: ${err instanceof Error?err.message:"Nie udało się zapisać licytacji."}`)}
-    finally{setBusy(false)}
-  };
-
-  const edit=(v:V)=>{
-    setEditing(v.id);
-    setForm({...v,year:v.year??"",mileage:v.mileage??"",auction_start_price:v.auction_start_price??"",auction_min_increment:v.auction_min_increment??500,auction_ends_at:toLocalInput(v.auction_ends_at),auction_deposit_amount:v.auction_deposit_amount??5000,auction_bank_account:v.auction_bank_account??""});
-    setExistingCover(v.image_url||""); setExistingGallery(v.gallery||[]);
-    setMessage(`EDYTUJESZ LICYTACJĘ #${String(v.id).padStart(4,"0")}.`);
-    window.scrollTo({top:0,behavior:"smooth"});
-  };
-
-  const setStatus=async(v:V,status:"available"|"sold")=>{
-    if(actionId!==null)return;
-    setActionId(v.id); setMessage("");
-    try{
-      const {error}=await s().from("market_vehicles").update({status,updated_at:new Date().toISOString()}).eq("id",v.id);
-      if(error) throw error;
-      setMessage(status==="available"?`LICYTACJA #${String(v.id).padStart(4,"0")} AKTYWOWANA.`:`LICYTACJA #${String(v.id).padStart(4,"0")} ZAKOŃCZONA.`);
-      await load();
-    }catch(err){setMessage(`BŁĄD: ${err instanceof Error?err.message:"Nie udało się zmienić statusu."}`)}
-    finally{setActionId(null)}
-  };
-
-  const removeAuction=async(v:V)=>{
-    if(actionId!==null)return;
-    if(!window.confirm(`Usunąć licytację #${String(v.id).padStart(4,"0")} — ${v.brand} ${v.model}?\n\nZniknie z panelu i strony publicznej razem z historią ofert oraz zgłoszeniami.`))return;
-    setActionId(v.id); setMessage("");
-    try{
-      let res=await s().from("market_auction_bids").delete().eq("vehicle_id",v.id); if(res.error)throw res.error;
-      res=await s().from("market_auction_registrations").delete().eq("vehicle_id",v.id); if(res.error)throw res.error;
-      res=await s().from("market_vehicles").delete().eq("id",v.id); if(res.error)throw res.error;
-      if(editing===v.id){setEditing(null);setForm(empty);setExistingCover("");setExistingGallery([]);setCover(null);setGallery([])}
-      setMessage(`LICYTACJA #${String(v.id).padStart(4,"0")} USUNIĘTA.`);
-      await load();
-    }catch(err){setMessage(`BŁĄD USUWANIA: ${err instanceof Error?err.message:"Nie udało się usunąć licytacji."}`)}
-    finally{setActionId(null)}
-  };
-
-  const review=async(r:Registration,status:"approved"|"rejected")=>{
-    setBusy(true);
-    const {data:user}=await s().auth.getUser();
-    const {error}=await s().from("market_auction_registrations").update({status,approved_at:status==="approved"?new Date().toISOString():null,approved_by:status==="approved"?user.user?.id:null}).eq("id",r.id);
-    setMessage(error?`BŁĄD: ${error.message}`:status==="approved"?"UCZESTNIK ZAAKCEPTOWANY.":"ZGŁOSZENIE ODRZUCONE.");
-    await load(); setBusy(false);
-  };
-
-  if(allowed===null)return <main className="market-admin">ŁADOWANIE…</main>;
-  if(!allowed)return <main className="market-admin"><h1>ZALOGUJ SIĘ.</h1><a href="/redakcja/logowanie">PRZEJDŹ DO LOGOWANIA →</a></main>;
-
-  return <main className="market-admin">
-    <header><a href="/" className="logo">STREET<span>SCOPE</span></a><nav><a href="/redakcja/market">MARKET</a><a href="/market/licytacje" target="_blank">OTWÓRZ LICYTACJE</a></nav></header>
-    <section className="admin-head"><p>TOW & TRADE · PANEL DEALERA</p><h1>LICY<br/><em>TACJE.</em></h1><span>{message||"Wystaw licytację, ustaw depozyt i akceptuj uczestników po zaksięgowaniu wpłaty."}</span></section>
-
-    <form onSubmit={save} className="market-form">
-      <label>MARKA<input required value={form.brand} onChange={e=>setForm({...form,brand:e.target.value})}/></label>
-      <label>MODEL<input required value={form.model} onChange={e=>setForm({...form,model:e.target.value})}/></label>
-      <label>ROK<input value={form.year} onChange={e=>setForm({...form,year:e.target.value})}/></label>
-      <label>PRZEBIEG MI<input value={form.mileage} onChange={e=>setForm({...form,mileage:e.target.value})}/></label>
-      <label>CENA STARTOWA $<input required value={form.auction_start_price} onChange={e=>setForm({...form,auction_start_price:e.target.value})}/></label>
-      <label>MINIMALNE PODBICIE $<input required value={form.auction_min_increment} onChange={e=>setForm({...form,auction_min_increment:e.target.value})}/></label>
-      <label>DEPOZYT $<input required value={form.auction_deposit_amount} onChange={e=>setForm({...form,auction_deposit_amount:e.target.value})}/></label>
-      <label>RACHUNEK TOW & TRADE<input value={form.auction_bank_account} onChange={e=>setForm({...form,auction_bank_account:e.target.value})} placeholder="Numer rachunku IC"/></label>
-      <label className="full">KONIEC LICYTACJI<input required type="datetime-local" value={form.auction_ends_at} onChange={e=>setForm({...form,auction_ends_at:e.target.value})}/></label>
-      <label>NAPĘD<input value={form.drivetrain} onChange={e=>setForm({...form,drivetrain:e.target.value})}/></label>
-      <label>SKRZYNIA<input value={form.transmission} onChange={e=>setForm({...form,transmission:e.target.value})}/></label>
-      <label>SILNIK<input value={form.engine} onChange={e=>setForm({...form,engine:e.target.value})}/></label>
-      <label>KOLOR<input value={form.color} onChange={e=>setForm({...form,color:e.target.value})}/></label>
-      <label>SPRZEDAJĄCY<input value={form.seller_name} onChange={e=>setForm({...form,seller_name:e.target.value})}/></label>
-      <label>TELEFON<input value={form.seller_phone} onChange={e=>setForm({...form,seller_phone:e.target.value})}/></label>
-      <label>STATUS<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="available">AKTYWNA</option><option value="reserved">WSTRZYMANA</option><option value="sold">ZAKOŃCZONA</option></select></label>
-      <label className="full">OPIS<textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label>
-      <label className="full">OKŁADKA<input type="file" accept="image/*" onChange={e=>setCover(e.target.files?.[0]||null)}/></label>
-      <label className="full">GALERIA — DO 8 ZDJĘĆ<input type="file" accept="image/*" multiple onChange={onGallery}/><small>{existingGallery.length} obecnych + {gallery.length} nowych</small></label>
-      <label className="check full"><input type="checkbox" checked={form.featured} onChange={e=>setForm({...form,featured:e.target.checked})}/> WYRÓŻNIONE</label>
-      <div className="full actions"><button disabled={busy}>{busy?"ZAPISUJĘ…":editing?"ZAPISZ LICYTACJĘ":"WYSTAW NA LICYTACJĘ"}</button>{editing&&<button type="button" onClick={()=>{setEditing(null);setForm(empty);setExistingCover("");setExistingGallery([])}}>ANULUJ</button>}</div>
-    </form>
-
-    <section className="auction-requests-admin">
-      <h2>ZGŁOSZENIA DO LICYTACJI <span>{registrations.filter(r=>r.status==="pending").length}</span></h2>
-      {registrations.length===0?<p>Brak zgłoszeń do aktywnych licytacji.</p>:registrations.map(r=>{
-        const car=rows.find(v=>v.id===r.vehicle_id);
-        return <article key={r.id}><div><small>LICYTACJA #{String(r.vehicle_id).padStart(4,"0")} · {r.status.toUpperCase()}</small><h3>{r.bidder_name}</h3><p>{car?`${car.brand} ${car.model}`:"Pojazd"} · zgłoszenie {new Date(r.created_at).toLocaleString("pl-PL")}</p></div><div className="row-actions">{r.status!=="approved"&&<button type="button" disabled={busy} onClick={()=>review(r,"approved")}>AKCEPTUJ DEPOZYT</button>}{r.status!=="rejected"&&<button type="button" disabled={busy} onClick={()=>review(r,"rejected")}>ODRZUĆ</button>}</div></article>
-      })}
-    </section>
-
-    <section className="market-list">
-      <h2>LICYTACJE <span>{rows.length}</span></h2>
-      {rows.map(v=>{
-        const ended=Boolean(v.auction_ends_at&&new Date(v.auction_ends_at)<=new Date());
-        const closed=v.status==="sold"||ended;
-        const winner=winners[v.id];
-        const working=actionId===v.id;
-        return <article key={v.id}>
-          <div className="thumb" style={v.image_url?{backgroundImage:`url(${v.image_url})`}:undefined}/>
-          <div>
-            <small>LICYTACJA #{String(v.id).padStart(4,"0")} · {closed?"ZAKOŃCZONA":v.status==="reserved"?"WSTRZYMANA":"AKTYWNA"}</small>
-            <h3>{v.brand} {v.model}</h3>
-            <b>${Number(v.auction_current_bid??v.auction_start_price??0).toLocaleString("en-US")} · {v.auction_bid_count||0} ofert · depozyt ${Number(v.auction_deposit_amount??5000).toLocaleString("en-US")}</b>
-            {closed&&<p style={{margin:"8px 0 0",fontWeight:900,color:winner?"#fff":"#777"}}>WYGRANY: {winner?`${winner.name} — $${winner.amount.toLocaleString("en-US")}`:"BRAK OFERT"}</p>}
-          </div>
-          <div className="row-actions">
-            <button type="button" disabled={working} onClick={()=>edit(v)}>EDYTUJ</button>
-            <button type="button" disabled={working||v.status==="available"} onClick={()=>setStatus(v,"available")}>{working?"...":"AKTYWUJ"}</button>
-            <button type="button" disabled={working||v.status==="sold"} onClick={()=>setStatus(v,"sold")}>{working?"...":"ZAKOŃCZ"}</button>
-            <button type="button" disabled={working} onClick={()=>removeAuction(v)}>USUŃ</button>
-          </div>
-        </article>
-      })}
-    </section>
-  </main>;
+ if(allowed===null)return <main className="market-admin">ŁADOWANIE…</main>;if(!allowed)return <main className="market-admin"><h1>ZALOGUJ SIĘ.</h1><a href="/redakcja/logowanie">PRZEJDŹ DO LOGOWANIA →</a></main>;
+ return <main className="market-admin auction-admin-page"><header><a href="/" className="logo">STREET<span>SCOPE</span></a><nav><a href="/redakcja/market">MARKET</a><a href="/licytacje" target="_blank">OTWÓRZ LICYTACJE</a></nav></header><section className="admin-head"><p>TOW & TRADE · PANEL DEALERA</p><h1>LICY<br/><em>TACJE.</em></h1><span>{message||"Wystaw licytację, ustaw depozyt i akceptuj uczestników po zaksięgowaniu wpłaty."}</span></section>
+ <form onSubmit={save} className="market-form"><label>MARKA<input required value={form.brand} onChange={e=>setForm({...form,brand:e.target.value})}/></label><label>MODEL<input required value={form.model} onChange={e=>setForm({...form,model:e.target.value})}/></label><label>ROK<input value={form.year} onChange={e=>setForm({...form,year:e.target.value})}/></label><label>PRZEBIEG MI<input value={form.mileage} onChange={e=>setForm({...form,mileage:e.target.value})}/></label><label>CENA STARTOWA $<input required value={form.auction_start_price} onChange={e=>setForm({...form,auction_start_price:e.target.value})}/></label><label>MINIMALNE PODBICIE $<input required value={form.auction_min_increment} onChange={e=>setForm({...form,auction_min_increment:e.target.value})}/></label><label>DEPOZYT $<input required value={form.auction_deposit_amount} onChange={e=>setForm({...form,auction_deposit_amount:e.target.value})}/></label><label>RACHUNEK TOW & TRADE<input value={form.auction_bank_account} onChange={e=>setForm({...form,auction_bank_account:e.target.value})}/></label><label className="full">KONIEC LICYTACJI<input required type="datetime-local" value={form.auction_ends_at} onChange={e=>setForm({...form,auction_ends_at:e.target.value})}/></label><label>NAPĘD<input value={form.drivetrain} onChange={e=>setForm({...form,drivetrain:e.target.value})}/></label><label>SKRZYNIA<input value={form.transmission} onChange={e=>setForm({...form,transmission:e.target.value})}/></label><label>SILNIK<input value={form.engine} onChange={e=>setForm({...form,engine:e.target.value})}/></label><label>KOLOR<input value={form.color} onChange={e=>setForm({...form,color:e.target.value})}/></label><label>SPRZEDAJĄCY<input value={form.seller_name} onChange={e=>setForm({...form,seller_name:e.target.value})}/></label><label>TELEFON<input value={form.seller_phone} onChange={e=>setForm({...form,seller_phone:e.target.value})}/></label><label>STATUS<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="available">AKTYWNA</option><option value="reserved">WSTRZYMANA</option><option value="sold">ZAKOŃCZONA</option></select></label><label className="full">OPIS<textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label className="full">OKŁADKA<input type="file" accept="image/*" onChange={e=>setCover(e.target.files?.[0]||null)}/></label><label className="full">GALERIA — DO 8 ZDJĘĆ<input type="file" accept="image/*" multiple onChange={onGallery}/><small>{existingGallery.length} obecnych + {gallery.length} nowych</small></label><label className="check full"><input type="checkbox" checked={form.featured} onChange={e=>setForm({...form,featured:e.target.checked})}/> WYRÓŻNIONE</label><div className="full actions"><button type="submit" disabled={busy}>{busy?"ZAPISUJĘ…":editing?"ZAPISZ LICYTACJĘ":"WYSTAW NA LICYTACJĘ"}</button>{editing&&<button type="button" onClick={()=>{setEditing(null);setForm(empty);setExistingCover("");setExistingGallery([])}}>ANULUJ</button>}</div></form>
+ <section className="auction-requests-admin"><h2>ZGŁOSZENIA DO LICYTACJI <span>{pendingCount}</span></h2>{registrations.length===0?<p>Brak zgłoszeń do aktywnych licytacji.</p>:registrations.map(r=>{const car=carById.get(r.vehicle_id);return <article key={r.id}><div><small>LICYTACJA #{String(r.vehicle_id).padStart(4,"0")} · {r.status.toUpperCase()}</small><h3>{r.bidder_name}</h3><p>{car?`${car.brand} ${car.model}`:"Pojazd"} · {new Date(r.created_at).toLocaleString("pl-PL")}</p></div><div className="row-actions">{r.status!=="approved"&&<button type="button" disabled={busy} onClick={()=>void review(r,"approved")}>AKCEPTUJ DEPOZYT</button>}{r.status!=="rejected"&&<button type="button" disabled={busy} onClick={()=>void review(r,"rejected")}>ODRZUĆ</button>}</div></article>})}</section>
+ <section className="market-list auction-admin-list"><div className="market-list-title-row"><h2>LICYTACJE <span>{filteredRows.length}</span></h2><input className="market-list-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="SZUKAJ: MARKA, MODEL, # LICYTACJI, PRACOWNIK"/></div>{filteredRows.length?filteredRows.map(v=>{const ended=Boolean(v.auction_ends_at&&new Date(v.auction_ends_at).getTime()<=Date.now()),closed=v.status==="sold"||ended,winner=winners[v.id],working=actionId===v.id;return <article className="auction-admin-card" key={v.id}><div className="thumb" style={v.image_url?{backgroundImage:`url(${v.image_url})`}:undefined}/><div className="auction-admin-card-copy"><small>LICYTACJA #{String(v.id).padStart(4,"0")} · {closed?"ZAKOŃCZONA":v.status==="reserved"?"WSTRZYMANA":"AKTYWNA"}</small><h3>{v.brand} {v.model}</h3><b>${Number(v.auction_current_bid??v.auction_start_price??0).toLocaleString("en-US")} · {v.auction_bid_count||0} ofert · depozyt ${Number(v.auction_deposit_amount??5000).toLocaleString("en-US")}</b><p className="auction-listed-by">WYSTAWIŁ: <strong>{v.listed_by_name?.trim()||"—"}</strong></p>{closed&&<p className="auction-winner-admin">WYGRANY: {winner?`${winner.name} — $${winner.amount.toLocaleString("en-US")}`:"BRAK OFERT"}</p>}</div><div className="row-actions"><button type="button" disabled={working} onClick={()=>edit(v)}>EDYTUJ</button><button type="button" disabled={working||v.status==="available"} onClick={()=>void setStatus(v,"available")}>AKTYWUJ</button><button type="button" disabled={working||v.status==="sold"} onClick={()=>void setStatus(v,"sold")}>ZAKOŃCZ</button><button type="button" disabled={working} onClick={()=>void removeAuction(v)}>USUŃ</button></div></article>}):<p className="auction-admin-empty">BRAK LICYTACJI PASUJĄCYCH DO WYSZUKIWANIA.</p>}</section></main>;
 }
