@@ -12,7 +12,10 @@ export default function RealtimeAuctionSync(){
   const params=useParams<{id:string}>();
   const vehicleId=Number(params.id);
   const previousAccess=useRef<string>("");
-  const syncing=useRef(false);
+  const syncingBids=useRef(false);
+  const syncingAccess=useRef(false);
+  const lastBidSync=useRef(0);
+  const lastAccessSync=useRef(0);
 
   useEffect(()=>{
     if(!Number.isFinite(vehicleId))return;
@@ -21,25 +24,36 @@ export default function RealtimeAuctionSync(){
 
     const getToken=()=>localStorage.getItem(`tow-auction-${params.id}`)||"";
 
-    const syncAccess=async()=>{
+    const syncAccess=async(force=false)=>{
+      const now=Date.now();
+      if(syncingAccess.current||(!force&&now-lastAccessSync.current<1200))return;
       const token=getToken();
       if(!token)return;
-      const {data,error}=await sb.rpc("get_market_auction_access",{p_vehicle_id:vehicleId,p_bidder_token:token});
-      if(error||stopped)return;
-      const status=String((data as Access|null)?.status||"");
-      if(previousAccess.current&&previousAccess.current!==status&&status==="approved"){
-        window.location.reload();
-        return;
+      syncingAccess.current=true;
+      lastAccessSync.current=now;
+      try{
+        const {data,error}=await sb.rpc("get_market_auction_access",{p_vehicle_id:vehicleId,p_bidder_token:token});
+        if(error||stopped)return;
+        const status=String((data as Access|null)?.status||"");
+        if(previousAccess.current&&previousAccess.current!==status&&status==="approved"){
+          sessionStorage.setItem(`tow-approved-${vehicleId}`,"1");
+          window.location.reload();
+          return;
+        }
+        previousAccess.current=status;
+      }finally{
+        syncingAccess.current=false;
       }
-      previousAccess.current=status;
     };
 
-    const syncBids=async()=>{
-      if(syncing.current)return;
-      syncing.current=true;
+    const syncBids=async(force=false)=>{
+      const now=Date.now();
+      if(syncingBids.current||(!force&&now-lastBidSync.current<900))return;
+      syncingBids.current=true;
+      lastBidSync.current=now;
       try{
         const [{data:bids,error:bidErr},{data:vehicle,error:vehicleErr}]=await Promise.all([
-          sb.from("market_auction_bids").select("id,bidder_name,amount,created_at").eq("vehicle_id",vehicleId).order("amount",{ascending:false}).order("created_at",{ascending:false}),
+          sb.from("market_auction_bids").select("id,bidder_name,amount,created_at").eq("vehicle_id",vehicleId).order("amount",{ascending:false}).order("created_at",{ascending:false}).limit(50),
           sb.from("market_vehicles").select("auction_current_bid,auction_start_price,auction_min_increment,auction_bid_count,status,sale_mode").eq("id",vehicleId).maybeSingle()
         ]);
         if(stopped)return;
@@ -60,9 +74,11 @@ export default function RealtimeAuctionSync(){
           if(history){
             let listEl=history.querySelector<HTMLElement>(".auction-bid-list");
             const empty=history.querySelector<HTMLElement>(".auction-no-bids");
-            if(list.length&& !listEl){
-              if(empty)empty.remove();
-              listEl=document.createElement("div");listEl.className="auction-bid-list";history.appendChild(listEl);
+            if(list.length&&!listEl){
+              empty?.remove();
+              listEl=document.createElement("div");
+              listEl.className="auction-bid-list";
+              history.appendChild(listEl);
             }
             if(listEl){
               listEl.innerHTML="";
@@ -77,19 +93,33 @@ export default function RealtimeAuctionSync(){
             }
           }
         }
-      }finally{syncing.current=false}
+      }finally{
+        syncingBids.current=false;
+      }
     };
 
-    void syncAccess();void syncBids();
+    const approvedAfterReload=sessionStorage.getItem(`tow-approved-${vehicleId}`)==="1";
+    if(approvedAfterReload)sessionStorage.removeItem(`tow-approved-${vehicleId}`);
+
+    void syncAccess(true);
+    void syncBids(true);
+
     const channel=sb.channel(`tow-auction-live-${vehicleId}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"market_auction_bids",filter:`vehicle_id=eq.${vehicleId}`},()=>void syncBids())
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"market_auction_registrations",filter:`vehicle_id=eq.${vehicleId}`},()=>void syncAccess())
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"market_vehicles",filter:`id=eq.${vehicleId}`},()=>void syncBids())
       .subscribe();
 
-    const accessPoll=window.setInterval(()=>void syncAccess(),1500);
-    const bidPoll=window.setInterval(()=>void syncBids(),2500);
-    return()=>{stopped=true;window.clearInterval(accessPoll);window.clearInterval(bidPoll);void sb.removeChannel(channel)};
+    // Realtime jest głównym mechanizmem. Te interwały są tylko lekkim fallbackiem.
+    const accessPoll=window.setInterval(()=>void syncAccess(true),8000);
+    const bidPoll=window.setInterval(()=>void syncBids(true),12000);
+
+    return()=>{
+      stopped=true;
+      window.clearInterval(accessPoll);
+      window.clearInterval(bidPoll);
+      void sb.removeChannel(channel);
+    };
   },[params.id,vehicleId]);
 
   return null;
