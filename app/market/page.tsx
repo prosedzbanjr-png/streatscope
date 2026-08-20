@@ -13,7 +13,7 @@ export default function MarketPage(){
  useEffect(()=>{void load()},[]);
  const filtered=useMemo(()=>rows.filter(v=>(status==="all"||v.status===status)&&`${v.brand} ${v.model}`.toLowerCase().includes(q.toLowerCase())),[rows,q,status]);
  return <main className="market">
-  <header className="market-nav"><a href="/" className="market-logo">STREET<span>SCOPE</span></a><nav><a className="active" href="/market">MARKET</a><a href="/market/licytacje">LICYTACJE</a></nav></header>
+  <header className="market-nav"><a href="/" className="market-logo">STREET<span>SCOPE</span></a><nav><a className="active" href="/market">MARKET</a><a href="/licytacje">LICYTACJE</a></nav></header>
   <section className="market-hero market-hero-background">
    <div className="market-hero-copy"><p>STREETSCOPE × TOW & TRADE</p><h1>TOW &<br/><em>TRADE.</em></h1><span>Samochody dostępne w salonie Tow & Trade.</span></div>
   </section>
