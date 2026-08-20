@@ -1,33 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getSupabase } from "../../lib/supabase";
+import { getSupabase, SUPABASE_WRITE_EVENT } from "../../lib/supabase";
 import "./lb-phone-publish-toggle.css";
 
 type EditorMode = "article" | "culture" | "guide";
 type PublishKind = "article" | "fashion" | "motor" | "guide";
-
+type WriteDetail = { url?: string; method?: string; body?: string; result?: unknown };
 type Props = { mode: EditorMode };
-
-function requestUrl(input: RequestInfo | URL) {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.toString();
-  return input.url;
-}
-
-function requestMethod(input: RequestInfo | URL, init?: RequestInit) {
-  if (init?.method) return init.method.toUpperCase();
-  if (typeof Request !== "undefined" && input instanceof Request) return input.method.toUpperCase();
-  return "GET";
-}
-
-async function requestBody(input: RequestInfo | URL, init?: RequestInit) {
-  if (typeof init?.body === "string") return init.body;
-  if (typeof Request !== "undefined" && input instanceof Request) {
-    try { return await input.clone().text(); } catch { return ""; }
-  }
-  return "";
-}
 
 function parseEntityId(value: unknown, url: string) {
   const rows = Array.isArray(value) ? value : value && typeof value === "object" ? [value] : [];
@@ -47,7 +27,6 @@ export default function LbPhonePublishToggle({ mode }: Props) {
   const [note, setNote] = useState("");
   const armedRef = useRef(false);
   const sendingRef = useRef(false);
-  const originalFetchRef = useRef<typeof window.fetch | null>(null);
 
   useEffect(() => { armedRef.current = armed; }, [armed]);
 
@@ -69,24 +48,19 @@ export default function LbPhonePublishToggle({ mode }: Props) {
 
   useEffect(() => {
     if (!allowed || typeof window === "undefined") return;
-    const originalFetch = window.fetch.bind(window);
-    originalFetchRef.current = originalFetch;
     const table = mode === "article" ? "articles" : mode === "culture" ? "street_features" : "guide_places";
 
-    const wrapped: typeof window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = requestUrl(input);
-      const method = requestMethod(input, init);
-      const isTarget = url.includes(`/rest/v1/${table}`) && (method === "POST" || method === "PATCH");
-      const rawBody = isTarget && armedRef.current ? await requestBody(input, init) : "";
-      const response = await originalFetch(input, init);
-
-      if (!isTarget || !armedRef.current || !response.ok || sendingRef.current || !rawBody) return response;
+    const onWrite = (event: Event) => {
+      if (!armedRef.current || sendingRef.current) return;
+      const detail = (event as CustomEvent<WriteDetail>).detail || {};
+      const url = String(detail.url || "");
+      if (!url.includes(`/rest/v1/${table}`) || !detail.body) return;
 
       let payload: Record<string, unknown> = {};
       try {
-        const decoded = JSON.parse(rawBody);
+        const decoded = JSON.parse(detail.body);
         payload = Array.isArray(decoded) ? (decoded[0] || {}) : decoded;
-      } catch { return response; }
+      } catch { return; }
 
       let kind: PublishKind | null = null;
       let eligible = false;
@@ -99,7 +73,7 @@ export default function LbPhonePublishToggle({ mode }: Props) {
           armedRef.current = false;
           setArmed(false);
           setNote("Zaplanowany materiał nie wysyła pushu przed godziną publikacji.");
-          return response;
+          return;
         }
       } else if (mode === "culture") {
         const rawKind = String(payload.kind || "");
@@ -110,7 +84,12 @@ export default function LbPhonePublishToggle({ mode }: Props) {
         eligible = payload.active === true;
       }
 
-      if (!eligible || !kind) return response;
+      if (!eligible || !kind) return;
+      const id = parseEntityId(detail.result, url);
+      if (!id) {
+        setNote("Publikacja zapisana, ale nie udało się ustalić ID do powiadomienia.");
+        return;
+      }
 
       sendingRef.current = true;
       armedRef.current = false;
@@ -119,18 +98,12 @@ export default function LbPhonePublishToggle({ mode }: Props) {
 
       void (async () => {
         try {
-          let responseJson: unknown = null;
-          try { responseJson = await response.clone().json(); } catch {}
-          const id = parseEntityId(responseJson, url);
-          if (!id) throw new Error("Nie udało się ustalić ID opublikowanego wpisu.");
-
           const sb = getSupabase();
           const { data } = await sb.auth.getSession();
           const token = data.session?.access_token;
           if (!token) throw new Error("Sesja redakcji wygasła.");
 
-          const notifyFetch = originalFetchRef.current || originalFetch;
-          const sent = await notifyFetch("/api/lb-phone/notify", {
+          const sent = await fetch("/api/lb-phone/notify", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({ kind, id }),
@@ -144,15 +117,10 @@ export default function LbPhonePublishToggle({ mode }: Props) {
           sendingRef.current = false;
         }
       })();
-
-      return response;
     };
 
-    window.fetch = wrapped;
-    return () => {
-      if (window.fetch === wrapped) window.fetch = originalFetch;
-      originalFetchRef.current = null;
-    };
+    window.addEventListener(SUPABASE_WRITE_EVENT, onWrite);
+    return () => window.removeEventListener(SUPABASE_WRITE_EVENT, onWrite);
   }, [allowed, mode]);
 
   if (!allowed) return null;
