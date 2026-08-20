@@ -72,7 +72,7 @@ export default function LbPhonePublishToggle({ mode }: Props) {
         if (eligible && Number.isFinite(scheduled) && scheduled > Date.now() + 5000) {
           armedRef.current = false;
           setArmed(false);
-          setNote("Zaplanowany materiał nie wysyła pushu przed godziną publikacji.");
+          setNote("Zaplanowany materiał nie trafia do kolejki przed godziną publikacji.");
           return;
         }
       } else if (mode === "culture") {
@@ -94,7 +94,7 @@ export default function LbPhonePublishToggle({ mode }: Props) {
       sendingRef.current = true;
       armedRef.current = false;
       setArmed(false);
-      setNote("Wysyłam powiadomienie do LB Phone…");
+      setNote("Dodaję push do kolejki LB Phone…");
 
       void (async () => {
         try {
@@ -108,11 +108,11 @@ export default function LbPhonePublishToggle({ mode }: Props) {
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({ kind, id }),
           });
-          const result = await sent.json().catch(() => null) as { ok?: boolean; error?: string } | null;
-          if (!sent.ok || !result?.ok) throw new Error(result?.error || `LB Phone zwrócił błąd ${sent.status}.`);
-          setNote("Powiadomienie LB Phone wysłane.");
+          const result = await sent.json().catch(() => null) as { ok?: boolean; queued?: boolean; error?: string } | null;
+          if (!sent.ok || !result?.ok) throw new Error(result?.error || `Kolejka LB Phone zwróciła błąd ${sent.status}.`);
+          setNote("Push dodany do kolejki. FiveM wyśle go do LB Phone.");
         } catch (error) {
-          setNote(error instanceof Error ? `Publikacja zapisana, ale push nie wyszedł: ${error.message}` : "Publikacja zapisana, ale push LB Phone nie wyszedł.");
+          setNote(error instanceof Error ? `Publikacja zapisana, ale kolejka push nie przyjęła wpisu: ${error.message}` : "Publikacja zapisana, ale nie udało się dodać pushu do kolejki.");
         } finally {
           sendingRef.current = false;
         }
@@ -127,8 +127,8 @@ export default function LbPhonePublishToggle({ mode }: Props) {
 
   return <aside className="lb-phone-publish-toggle" aria-live="polite">
     <label>
-      <input type="checkbox" checked={armed} onChange={event => { setArmed(event.target.checked); setNote(event.target.checked ? "Push wyśle się tylko po faktycznej publikacji." : ""); }} />
-      <span><b>POWIADOM LB PHONE</b><small>Po publikacji wyślij mieszkańcom push o nowym materiale.</small></span>
+      <input type="checkbox" checked={armed} onChange={event => { setArmed(event.target.checked); setNote(event.target.checked ? "Po publikacji push trafi do kolejki Supabase." : ""); }} />
+      <span><b>POWIADOM LB PHONE</b><small>Po publikacji dodaj mieszkańcom push do kolejki Supabase.</small></span>
     </label>
     {note && <p>{note}</p>}
   </aside>;
