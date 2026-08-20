@@ -37,7 +37,8 @@ export default function MarketAdmin(){
 
   const load=async()=>{
     const {data,error}=await s().from("market_vehicles").select("*").order("created_at",{ascending:false});
-    if(error)setMessage(error.message);else setRows((data as V[]|null)??[]);
+    if(error){setMessage(`Błąd ładowania ofert: ${error.message}`);return;}
+    setRows((data as V[]|null)??[]);
   };
 
   useEffect(()=>{(async()=>{
@@ -68,9 +69,8 @@ export default function MarketAdmin(){
       const fresh:string[]=[];for(const f of gallery)fresh.push(await upload(f));
       const payload={
         brand:form.brand,model:form.model,year:form.year?Number(form.year):null,
-        price:form.sale_mode==="sale"?Number(form.price)||0:Number(form.price)||0,
-        mileage:form.mileage?Number(form.mileage):null,drivetrain:form.drivetrain||null,
-        transmission:form.transmission||null,engine:form.engine||null,color:form.color||null,
+        price:Number(form.price)||0,mileage:form.mileage?Number(form.mileage):null,
+        drivetrain:form.drivetrain||null,transmission:form.transmission||null,engine:form.engine||null,color:form.color||null,
         description:form.description||null,image_url,gallery:[...existingGallery,...fresh].slice(0,8),
         seller_name:form.seller_name||"Tow & Trade",seller_phone:form.seller_phone||null,
         status:form.status,featured:Boolean(form.featured),sale_mode:form.sale_mode,
@@ -89,12 +89,25 @@ export default function MarketAdmin(){
   };
 
   const edit=(v:V)=>{
+    setMessage(`EDYTUJESZ: ${v.brand} ${v.model}`);
     setEditing(v.id);
     setForm({...v,year:v.year??"",mileage:v.mileage??"",auction_start_price:v.auction_start_price??"",auction_min_increment:v.auction_min_increment??500,auction_ends_at:toLocalInput(v.auction_ends_at)});
-    setExistingCover(v.image_url||"");setExistingGallery(v.gallery||[]);window.scrollTo({top:0,behavior:"smooth"});
+    setExistingCover(v.image_url||"");setExistingGallery(v.gallery||[]);setCover(null);setGallery([]);
+    window.scrollTo({top:0,behavior:"smooth"});
   };
-  const setStatus=async(v:V,status:string)=>{await s().from("market_vehicles").update({status,updated_at:new Date().toISOString()}).eq("id",v.id);await load()};
-  const cancelEdit=()=>{setEditing(null);setForm(empty);setExistingCover("");setExistingGallery([]);setCover(null);setGallery([])};
+
+  const setStatus=async(v:V,status:string)=>{
+    setBusy(true);setMessage("");
+    try{
+      const {error}=await s().from("market_vehicles").update({status,updated_at:new Date().toISOString()}).eq("id",v.id);
+      if(error)throw error;
+      setRows(prev=>prev.map(row=>row.id===v.id?{...row,status}:row));
+      setMessage(`${v.brand} ${v.model}: status zmieniony na ${status==="available"?"AKTYWNE":status==="reserved"?"ZAREZERWOWANE":"SPRZEDANE"}.`);
+    }catch(err){setMessage(err instanceof Error?`Nie udało się zmienić statusu: ${err.message}`:"Nie udało się zmienić statusu.");}
+    finally{setBusy(false)}
+  };
+
+  const cancelEdit=()=>{setEditing(null);setForm(empty);setExistingCover("");setExistingGallery([]);setCover(null);setGallery([]);setMessage("")};
 
   if(allowed===null)return <main className="market-admin">ŁADOWANIE…</main>;
   if(!allowed)return <main className="market-admin"><h1>ZALOGUJ SIĘ.</h1><a href="/redakcja/logowanie">PRZEJDŹ DO LOGOWANIA →</a></main>;
@@ -103,7 +116,7 @@ export default function MarketAdmin(){
   const offers=rows.filter(v=>v.sale_mode==="sale");
 
   const renderRow=(v:V)=>{
-    const ended=v.sale_mode==="auction"&&v.auction_ends_at&&new Date(v.auction_ends_at)<=new Date();
+    const ended=v.sale_mode==="auction"&&Boolean(v.auction_ends_at)&&new Date(v.auction_ends_at as string).getTime()<=Date.now();
     const listedBy=v.listed_by_name?.trim()||"—";
     return <article key={v.id}>
       <div className="thumb" style={v.image_url?{backgroundImage:`url(${v.image_url})`}:undefined}/>
@@ -115,10 +128,10 @@ export default function MarketAdmin(){
         {v.sale_mode==="sale"&&<small style={{display:"block",marginTop:5}}>SPRZEDAJĄCY: <strong>{v.seller_name||"Tow & Trade"}</strong>{v.seller_phone?` · ${v.seller_phone}`:""}</small>}
       </div>
       <div className="row-actions">
-        <button onClick={()=>edit(v)}>EDYTUJ</button>
-        <button onClick={()=>setStatus(v,"available")}>AKTYWUJ</button>
-        <button onClick={()=>setStatus(v,"reserved")}>REZERWUJ</button>
-        <button onClick={()=>setStatus(v,"sold")}>SPRZEDANE</button>
+        <button type="button" disabled={busy} onClick={()=>edit(v)}>EDYTUJ</button>
+        <button type="button" disabled={busy||v.status==="available"} onClick={()=>void setStatus(v,"available")}>AKTYWUJ</button>
+        <button type="button" disabled={busy||v.status==="reserved"} onClick={()=>void setStatus(v,"reserved")}>REZERWUJ</button>
+        <button type="button" disabled={busy||v.status==="sold"} onClick={()=>void setStatus(v,"sold")}>SPRZEDANE</button>
       </div>
     </article>;
   };
@@ -151,7 +164,7 @@ export default function MarketAdmin(){
       <label className="full">OKŁADKA<input type="file" accept="image/*" onChange={e=>setCover(e.target.files?.[0]||null)}/>{existingCover&&<small>Obecna okładka zostanie zachowana, jeśli nie wybierzesz nowej.</small>}</label>
       <label className="full">GALERIA — DO 8 ZDJĘĆ<input type="file" accept="image/*" multiple onChange={onGallery}/><small>{existingGallery.length} obecnych + {gallery.length} nowych</small></label>
       <label className="check full"><input type="checkbox" checked={form.featured} onChange={e=>setForm({...form,featured:e.target.checked})}/> WYRÓŻNIONE</label>
-      <div className="full actions"><button disabled={busy}>{busy?"WYSYŁAM…":editing?"ZAPISZ ZMIANY":form.sale_mode==="auction"?"WYSTAW NA LICYTACJĘ":"WYSTAW OFERTĘ"}</button>{editing&&<button type="button" onClick={cancelEdit}>ANULUJ</button>}</div>
+      <div className="full actions"><button type="submit" disabled={busy}>{busy?"WYSYŁAM…":editing?"ZAPISZ ZMIANY":form.sale_mode==="auction"?"WYSTAW NA LICYTACJĘ":"WYSTAW OFERTĘ"}</button>{editing&&<button type="button" onClick={cancelEdit}>ANULUJ</button>}</div>
     </form>
 
     <section className="market-list market-list-auctions"><h2>LICYTACJE <span>{auctions.length}</span></h2>{auctions.length?auctions.map(renderRow):<p style={{padding:"20px 0",color:"#777"}}>BRAK LICYTACJI.</p>}</section>
