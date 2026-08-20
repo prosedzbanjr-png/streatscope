@@ -11,9 +11,9 @@ export default function ListedBy(){
   useEffect(()=>{
     const id=Number(params.id);
     if(!Number.isFinite(id))return;
-    getSupabase().from("market_vehicles").select("seller_name").eq("id",id).maybeSingle().then(({data})=>{
-      const value=String(data?.seller_name||"").trim();
-      if(value&&value.toLowerCase()!=="tow & trade")setName(value);
+    getSupabase().from("market_vehicles").select("*").eq("id",id).maybeSingle().then(({data})=>{
+      const value=String((data as any)?.listed_by_name||"").trim();
+      setName(value);
     });
   },[params.id]);
 
