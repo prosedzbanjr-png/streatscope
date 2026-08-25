@@ -4,40 +4,6 @@ type PublishKind = "article" | "fashion" | "motor" | "guide";
 
 const text = (value: unknown, max = 1000) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const isApprover = (role: string) => ["editor_in_chief", "deputy_editor_in_chief"].includes(role);
-const TRACK_PATH = "/api/lb-phone/view-image";
-
-function unwrapTrackedImage(value: string, baseUrl: string) {
-  if (!value) return "";
-  try {
-    const url = new URL(value, baseUrl);
-    if (url.pathname !== TRACK_PATH) return value;
-    return url.searchParams.get("src") || value;
-  } catch {
-    return value;
-  }
-}
-
-function trackedImageUrl(kind: PublishKind, id: number, value: string, baseUrl: string) {
-  const source = unwrapTrackedImage(value, baseUrl);
-  if (!source) return "";
-  const url = new URL(TRACK_PATH, baseUrl);
-  url.searchParams.set("kind", kind);
-  url.searchParams.set("id", String(id));
-  url.searchParams.set("src", source);
-  url.searchParams.set("v", String(Date.now()));
-  return url.toString();
-}
-
-async function saveTrackedImage(table: "articles" | "street_features" | "guide_places", id: number, tracked: string, supabaseUrl: string, serviceHeaders: Record<string, string>) {
-  if (!tracked) return false;
-  const update = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
-    method: "PATCH",
-    headers: { ...serviceHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ image_url: tracked }),
-    cache: "no-store",
-  }).catch(() => null);
-  return Boolean(update?.ok);
-}
 
 export async function POST(request: Request) {
   try {
@@ -72,7 +38,6 @@ export async function POST(request: Request) {
     const staff = staffRows[0];
     if (!staff?.active || !isApprover(staff.role || "")) return NextResponse.json({ error: "Brak dostępu." }, { status: 403 });
 
-    const baseUrl = new URL(request.url).origin;
     let title = "";
     let content = "";
     let thumbnail = "";
@@ -89,10 +54,7 @@ export async function POST(request: Request) {
       if (row.status !== "published" || publishTime > Date.now() + 5000) return NextResponse.json({ error: "Materiał nie jest jeszcze publiczny." }, { status: 409 });
       title = text(row.title, 180);
       content = text(row.excerpt, 260);
-      const rawImage = text(row.image_url, 2000);
-      const tracked = trackedImageUrl(kind, row.id, rawImage, baseUrl);
-      thumbnail = tracked || rawImage;
-      if (tracked && tracked !== rawImage) await saveTrackedImage("articles", row.id, tracked, supabaseUrl, serviceHeaders);
+      thumbnail = text(row.image_url, 1000);
       path = `/artykul/${row.id}`;
       notificationLabel = "NOWY ARTYKUŁ";
     } else if (kind === "fashion" || kind === "motor") {
@@ -104,10 +66,7 @@ export async function POST(request: Request) {
       if (!row.published) return NextResponse.json({ error: "Wpis nie jest publiczny." }, { status: 409 });
       title = text(row.title, 180);
       content = text(row.subtitle, 260);
-      const rawImage = text(row.image_url, 2000);
-      const tracked = trackedImageUrl(kind, row.id, rawImage, baseUrl);
-      thumbnail = tracked || rawImage;
-      if (tracked && tracked !== rawImage) await saveTrackedImage("street_features", row.id, tracked, supabaseUrl, serviceHeaders);
+      thumbnail = text(row.image_url, 1000);
       path = `/${kind}/${row.id}`;
       notificationLabel = kind === "fashion" ? "NOWY LOOK" : "NOWY BUILD";
     } else {
@@ -119,14 +78,12 @@ export async function POST(request: Request) {
       if (!row.active) return NextResponse.json({ error: "Miejsce nie jest publiczne." }, { status: 409 });
       title = text(row.name, 180);
       content = text(row.short_description, 260);
-      const rawImage = text(row.image_url, 2000);
-      const tracked = trackedImageUrl(kind, row.id, rawImage, baseUrl);
-      thumbnail = tracked || rawImage;
-      if (tracked && tracked !== rawImage) await saveTrackedImage("guide_places", row.id, tracked, supabaseUrl, serviceHeaders);
+      thumbnail = text(row.image_url, 1000);
       path = `/guide/${row.id}`;
       notificationLabel = "NOWE W SCOPE GUIDE";
     }
 
+    const baseUrl = new URL(request.url).origin;
     const queued = await fetch(`${supabaseUrl}/rest/v1/phone_notifications?select=id,status`, {
       method: "POST",
       headers: {
