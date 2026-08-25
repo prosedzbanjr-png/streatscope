@@ -24,6 +24,7 @@ function trackedImageUrl(kind: PublishKind, id: number, value: string, baseUrl: 
   url.searchParams.set("kind", kind);
   url.searchParams.set("id", String(id));
   url.searchParams.set("src", source);
+  url.searchParams.set("v", String(Date.now()));
   return url.toString();
 }
 
@@ -89,8 +90,8 @@ export async function POST(request: Request) {
       title = text(row.title, 180);
       content = text(row.excerpt, 260);
       const rawImage = text(row.image_url, 2000);
-      thumbnail = rawImage;
       const tracked = trackedImageUrl(kind, row.id, rawImage, baseUrl);
+      thumbnail = tracked || rawImage;
       if (tracked && tracked !== rawImage) await saveTrackedImage("articles", row.id, tracked, supabaseUrl, serviceHeaders);
       path = `/artykul/${row.id}`;
       notificationLabel = "NOWY ARTYKUŁ";
@@ -104,8 +105,8 @@ export async function POST(request: Request) {
       title = text(row.title, 180);
       content = text(row.subtitle, 260);
       const rawImage = text(row.image_url, 2000);
-      thumbnail = rawImage;
       const tracked = trackedImageUrl(kind, row.id, rawImage, baseUrl);
+      thumbnail = tracked || rawImage;
       if (tracked && tracked !== rawImage) await saveTrackedImage("street_features", row.id, tracked, supabaseUrl, serviceHeaders);
       path = `/${kind}/${row.id}`;
       notificationLabel = kind === "fashion" ? "NOWY LOOK" : "NOWY BUILD";
@@ -119,8 +120,8 @@ export async function POST(request: Request) {
       title = text(row.name, 180);
       content = text(row.short_description, 260);
       const rawImage = text(row.image_url, 2000);
-      thumbnail = rawImage;
       const tracked = trackedImageUrl(kind, row.id, rawImage, baseUrl);
+      thumbnail = tracked || rawImage;
       if (tracked && tracked !== rawImage) await saveTrackedImage("guide_places", row.id, tracked, supabaseUrl, serviceHeaders);
       path = `/guide/${row.id}`;
       notificationLabel = "NOWE W SCOPE GUIDE";
