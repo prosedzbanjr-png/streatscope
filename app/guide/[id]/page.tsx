@@ -24,9 +24,12 @@ export default function GuideDetailPage({params}:{params:Promise<{id:string}>}){
     params.then(async({id})=>{
       const n=Number(id);
       if(!Number.isInteger(n)||n<1){if(alive)setMissing(true);return;}
-      const {data}=await getSupabase().from("guide_places").select("*").eq("id",n).eq("active",true).is("archived_at",null).maybeSingle();
+      const client=getSupabase();
+      const {data}=await client.from("guide_places").select("*").eq("id",n).eq("active",true).is("archived_at",null).maybeSingle();
       if(!alive)return;
-      if(!data)setMissing(true); else setRow(data as GuidePlace);
+      if(!data){setMissing(true);return;}
+      setRow(data as GuidePlace);
+      void client.rpc("increment_guide_views",{place_id:n});
     });
     return()=>{alive=false};
   },[params]);
