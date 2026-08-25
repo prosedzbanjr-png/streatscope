@@ -43,7 +43,7 @@ export default function LbPhonePublishToggle({ mode }: Props) {
         const canManage = Boolean(staff?.active && ["editor_in_chief", "deputy_editor_in_chief"].includes(String(staff?.role || "")));
         setAllowed(canManage);
 
-        if (canManage && typeof window !== "undefined" && sessionStorage.getItem("streetscope-lb-image-sync-v1") !== "done") {
+        if (canManage && typeof window !== "undefined" && sessionStorage.getItem("streetscope-lb-image-sync-v2") !== "done") {
           const { data: sessionData } = await sb.auth.getSession();
           const token = sessionData.session?.access_token;
           if (token) {
@@ -51,7 +51,7 @@ export default function LbPhonePublishToggle({ mode }: Props) {
               method: "POST",
               headers: { Authorization: `Bearer ${token}` },
             }).catch(() => null);
-            if (sync?.ok) sessionStorage.setItem("streetscope-lb-image-sync-v1", "done");
+            if (sync?.ok) sessionStorage.setItem("streetscope-lb-image-sync-v2", "done");
           }
         }
       } catch { if (active) setAllowed(false); }
