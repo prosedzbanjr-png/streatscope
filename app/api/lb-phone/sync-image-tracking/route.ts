@@ -16,6 +16,7 @@ function trackedImageUrl(kind: PublishKind, id: number, value: string, baseUrl: 
       normalized.searchParams.set("kind", kind);
       normalized.searchParams.set("id", String(id));
       normalized.searchParams.set("src", source);
+      normalized.searchParams.set("v", String(Date.now()));
       return normalized.toString();
     }
   } catch {}
@@ -23,14 +24,15 @@ function trackedImageUrl(kind: PublishKind, id: number, value: string, baseUrl: 
   url.searchParams.set("kind", kind);
   url.searchParams.set("id", String(id));
   url.searchParams.set("src", value);
+  url.searchParams.set("v", String(Date.now()));
   return url.toString();
 }
 
-async function patchRow(table: string, id: number, imageUrl: string, supabaseUrl: string, headers: Record<string, string>) {
+async function patchFields(table: string, id: number, fields: Record<string, string>, supabaseUrl: string, headers: Record<string, string>) {
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
     method: "PATCH",
     headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ image_url: imageUrl }),
+    body: JSON.stringify(fields),
     cache: "no-store",
   }).catch(() => null);
   return Boolean(response?.ok);
@@ -60,33 +62,45 @@ export async function POST(request: Request) {
     if (!staff?.active || !isApprover(staff.role || "")) return NextResponse.json({ error: "Brak dostępu." }, { status: 403 });
 
     const baseUrl = new URL(request.url).origin;
-    const [articlesResponse, featuresResponse, guideResponse] = await Promise.all([
-      fetch(`${supabaseUrl}/rest/v1/articles?status=eq.published&archived_at=is.null&image_url=not.is.null&select=id,image_url&limit=1000`, { headers: serviceHeaders, cache: "no-store" }),
-      fetch(`${supabaseUrl}/rest/v1/street_features?published=eq.true&archived_at=is.null&image_url=not.is.null&select=id,kind,image_url&limit=1000`, { headers: serviceHeaders, cache: "no-store" }),
-      fetch(`${supabaseUrl}/rest/v1/guide_places?active=eq.true&archived_at=is.null&image_url=not.is.null&select=id,image_url&limit=1000`, { headers: serviceHeaders, cache: "no-store" }),
+    const [articlesResponse, featuresResponse, guideResponse, notificationsResponse] = await Promise.all([
+      fetch(`${supabaseUrl}/rest/v1/articles?status=eq.published&archived_at=is.null&select=id,image_url,social_image&limit=1000`, { headers: serviceHeaders, cache: "no-store" }),
+      fetch(`${supabaseUrl}/rest/v1/street_features?published=eq.true&archived_at=is.null&select=id,kind,image_url&limit=1000`, { headers: serviceHeaders, cache: "no-store" }),
+      fetch(`${supabaseUrl}/rest/v1/guide_places?active=eq.true&archived_at=is.null&select=id,image_url&limit=1000`, { headers: serviceHeaders, cache: "no-store" }),
+      fetch(`${supabaseUrl}/rest/v1/phone_notifications?select=id,kind,entity_id,thumbnail&thumbnail=not.is.null&limit=1000`, { headers: serviceHeaders, cache: "no-store" }),
     ]);
     if (!articlesResponse.ok || !featuresResponse.ok || !guideResponse.ok) return NextResponse.json({ error: "Nie udało się pobrać materiałów do synchronizacji." }, { status: 502 });
 
-    const articles = await articlesResponse.json() as Array<{ id: number; image_url: string }>;
-    const features = await featuresResponse.json() as Array<{ id: number; kind: "fashion" | "motor"; image_url: string }>;
-    const guide = await guideResponse.json() as Array<{ id: number; image_url: string }>;
+    const articles = await articlesResponse.json() as Array<{ id: number; image_url?: string | null; social_image?: string | null }>;
+    const features = await featuresResponse.json() as Array<{ id: number; kind: "fashion" | "motor"; image_url?: string | null }>;
+    const guide = await guideResponse.json() as Array<{ id: number; image_url?: string | null }>;
+    const notifications = notificationsResponse.ok ? await notificationsResponse.json() as Array<{ id: number; kind?: PublishKind; entity_id?: number; thumbnail?: string | null }> : [];
     let changed = 0;
 
     for (const row of articles) {
-      const tracked = trackedImageUrl("article", row.id, row.image_url, baseUrl);
-      if (tracked !== row.image_url && await patchRow("articles", row.id, tracked, supabaseUrl, serviceHeaders)) changed++;
+      const fields: Record<string, string> = {};
+      if (row.image_url) fields.image_url = trackedImageUrl("article", row.id, row.image_url, baseUrl);
+      if (row.social_image) fields.social_image = trackedImageUrl("article", row.id, row.social_image, baseUrl);
+      if (Object.keys(fields).length && await patchFields("articles", row.id, fields, supabaseUrl, serviceHeaders)) changed++;
     }
     for (const row of features) {
-      if (row.kind !== "fashion" && row.kind !== "motor") continue;
+      if ((row.kind !== "fashion" && row.kind !== "motor") || !row.image_url) continue;
       const tracked = trackedImageUrl(row.kind, row.id, row.image_url, baseUrl);
-      if (tracked !== row.image_url && await patchRow("street_features", row.id, tracked, supabaseUrl, serviceHeaders)) changed++;
+      if (await patchFields("street_features", row.id, { image_url: tracked }, supabaseUrl, serviceHeaders)) changed++;
     }
     for (const row of guide) {
+      if (!row.image_url) continue;
       const tracked = trackedImageUrl("guide", row.id, row.image_url, baseUrl);
-      if (tracked !== row.image_url && await patchRow("guide_places", row.id, tracked, supabaseUrl, serviceHeaders)) changed++;
+      if (await patchFields("guide_places", row.id, { image_url: tracked }, supabaseUrl, serviceHeaders)) changed++;
+    }
+    for (const row of notifications) {
+      const kind = row.kind;
+      const entityId = Number(row.entity_id);
+      if (!kind || !["article", "fashion", "motor", "guide"].includes(kind) || !Number.isInteger(entityId) || entityId < 1 || !row.thumbnail) continue;
+      const tracked = trackedImageUrl(kind, entityId, row.thumbnail, baseUrl);
+      if (await patchFields("phone_notifications", row.id, { thumbnail: tracked }, supabaseUrl, serviceHeaders)) changed++;
     }
 
-    return NextResponse.json({ ok: true, changed, scanned: articles.length + features.length + guide.length });
+    return NextResponse.json({ ok: true, changed, scanned: articles.length + features.length + guide.length + notifications.length });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Synchronizacja nie powiodła się." }, { status: 500 });
   }
