@@ -40,20 +40,7 @@ export default function LbPhonePublishToggle({ mode }: Props) {
         if (!email) return;
         const { data: staff } = await sb.from("staff_accounts").select("active,role").eq("email", email).maybeSingle();
         if (!active) return;
-        const canManage = Boolean(staff?.active && ["editor_in_chief", "deputy_editor_in_chief"].includes(String(staff?.role || "")));
-        setAllowed(canManage);
-
-        if (canManage && typeof window !== "undefined" && sessionStorage.getItem("streetscope-lb-image-sync-v2") !== "done") {
-          const { data: sessionData } = await sb.auth.getSession();
-          const token = sessionData.session?.access_token;
-          if (token) {
-            const sync = await fetch("/api/lb-phone/sync-image-tracking", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
-            }).catch(() => null);
-            if (sync?.ok) sessionStorage.setItem("streetscope-lb-image-sync-v2", "done");
-          }
-        }
+        setAllowed(Boolean(staff?.active && ["editor_in_chief", "deputy_editor_in_chief"].includes(String(staff?.role || ""))));
       } catch { if (active) setAllowed(false); }
     })();
     return () => { active = false; };
