@@ -42,7 +42,28 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
     return () => { window.removeEventListener("scroll", updateProgress); window.removeEventListener("resize", updateProgress); };
   }, []);
 
-  useEffect(() => { params.then(({ id }) => { const articleId = Number(id); if (!Number.isInteger(articleId) || articleId < 1) { setMissing(true); return; } getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at,views,author_email,author_name,author_role").eq("id", articleId).eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).maybeSingle().then(({ data }) => { if (!data) { setMissing(true); return; } setArticle(data as Article); void loadRails(articleId); getSupabase().rpc("increment_article_views", { article_id: articleId }).then(() => setArticle(current => current ? { ...current, views: (current.views ?? 0) + 1 } : current)); }); }); }, [params]);
+  useEffect(() => {
+    params.then(({ id }) => {
+      const articleId = Number(id);
+      if (!Number.isInteger(articleId) || articleId < 1) { setMissing(true); return; }
+      getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at,views,author_email,author_name,author_role").eq("id", articleId).eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).maybeSingle().then(({ data }) => {
+        if (!data) { setMissing(true); return; }
+        setArticle(data as Article);
+        void loadRails(articleId);
+        void fetch("/api/views/article", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleId }),
+          keepalive: true,
+        }).then(async response => {
+          if (!response.ok) return;
+          const result = await response.json().catch(() => ({}));
+          setArticle(current => current ? { ...current, views: typeof result.views === "number" ? result.views : (current.views ?? 0) + 1 } : current);
+        }).catch(() => null);
+      });
+    });
+  }, [params]);
+
   if (missing) return <main className="article-page article-missing"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><h1>TEGO MATERIAŁU<br />TU <em>NIE MA.</em></h1><a href="/" className="red-button">← WRÓĆ DO WIADOMOŚCI</a></main>;
   if (!article) return <main className="article-page article-loading"><div className="reading-progress" style={{ width: `${readProgress}%` }} /><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a></header><section className="article-loading-shell"><div className="skeleton skeleton-kicker"/><div className="skeleton skeleton-title"/><div className="skeleton skeleton-title short"/><div className="skeleton skeleton-lead"/><div className="skeleton skeleton-article-image"/></section></main>;
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "long", year: "numeric" }) : "DZISIAJ";
