@@ -6,17 +6,6 @@ function validKind(value: string): value is PublishKind {
   return ["article", "fashion", "motor", "guide"].includes(value);
 }
 
-function sameStreetScopeOrigin(referer: string, requestOrigin: string) {
-  if (!referer) return false;
-  try {
-    const ref = new URL(referer);
-    const own = new URL(requestOrigin);
-    return ref.origin === own.origin || ref.hostname === "streetscope.vercel.app";
-  } catch {
-    return false;
-  }
-}
-
 function safeSource(raw: string, requestOrigin: string, supabaseUrl: string) {
   try {
     const source = new URL(raw, requestOrigin);
@@ -46,24 +35,25 @@ async function incrementView(kind: PublishKind, id: number, supabaseUrl: string,
     body: JSON.stringify(rpcBody),
     cache: "no-store",
   }).catch(() => null);
-  if (rpc?.ok) return;
+  if (rpc?.ok) return true;
 
   const table = kind === "article" ? "articles" : kind === "guide" ? "guide_places" : "street_features";
   const lookup = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}&select=id,views&limit=1`, {
     headers,
     cache: "no-store",
   }).catch(() => null);
-  if (!lookup?.ok) return;
+  if (!lookup?.ok) return false;
 
   const rows = await lookup.json().catch(() => []) as Array<{ id?: number; views?: number | null }>;
-  if (!rows[0]?.id) return;
+  if (!rows[0]?.id) return false;
   const views = Math.max(0, Number(rows[0].views) || 0) + 1;
-  await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
+  const update = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
     method: "PATCH",
     headers: { ...headers, Prefer: "return=minimal" },
     body: JSON.stringify({ views }),
     cache: "no-store",
   }).catch(() => null);
+  return Boolean(update?.ok);
 }
 
 export async function GET(request: Request) {
@@ -82,8 +72,8 @@ export async function GET(request: Request) {
   const source = safeSource(rawSource, requestOrigin, supabaseUrl);
   if (!source) return new Response("Image source not allowed", { status: 400 });
 
-  const shouldCount = Boolean(serviceKey) && !sameStreetScopeOrigin(request.headers.get("referer") || "", requestOrigin);
-  if (shouldCount) await incrementView(kind, id, supabaseUrl, serviceKey).catch(() => null);
+  let counted = false;
+  if (serviceKey) counted = await incrementView(kind, id, supabaseUrl, serviceKey).catch(() => false);
 
   return new Response(null, {
     status: 302,
@@ -93,7 +83,7 @@ export async function GET(request: Request) {
       "CDN-Cache-Control": "no-store",
       "Vercel-CDN-Cache-Control": "no-store",
       "Access-Control-Allow-Origin": "*",
-      "X-StreetScope-View-Tracking": shouldCount ? "lb-phone" : "website-skip",
+      "X-StreetScope-View-Tracking": counted ? "counted" : "not-counted",
     },
   });
 }
