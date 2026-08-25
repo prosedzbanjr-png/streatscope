@@ -83,20 +83,17 @@ export async function GET(request: Request) {
   if (!source) return new Response("Image source not allowed", { status: 400 });
 
   const shouldCount = Boolean(serviceKey) && !sameStreetScopeOrigin(request.headers.get("referer") || "", requestOrigin);
-  const imagePromise = fetch(source, { cache: "no-store", redirect: "follow" });
-  const countPromise = shouldCount ? incrementView(kind, id, supabaseUrl, serviceKey) : Promise.resolve();
-  const [imageResult] = await Promise.allSettled([imagePromise, countPromise]);
+  if (shouldCount) await incrementView(kind, id, supabaseUrl, serviceKey).catch(() => null);
 
-  if (imageResult.status !== "fulfilled") return new Response("Image unavailable", { status: 502 });
-  const image = imageResult.value;
-  if (!image.ok || !image.body) return new Response("Image unavailable", { status: image.status || 502 });
-
-  const headers = new Headers();
-  headers.set("Content-Type", image.headers.get("content-type") || "image/jpeg");
-  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-  headers.set("CDN-Cache-Control", "no-store");
-  headers.set("Vercel-CDN-Cache-Control", "no-store");
-  headers.set("Access-Control-Allow-Origin", "*");
-  headers.set("X-StreetScope-View-Tracking", shouldCount ? "lb-phone" : "website-skip");
-  return new Response(image.body, { status: 200, headers });
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: source,
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "CDN-Cache-Control": "no-store",
+      "Vercel-CDN-Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*",
+      "X-StreetScope-View-Tracking": shouldCount ? "lb-phone" : "website-skip",
+    },
+  });
 }
