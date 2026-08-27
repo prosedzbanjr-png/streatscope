@@ -18,6 +18,7 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
   const [latest, setLatest] = useState<RailStory[]>([]);
   const [popular, setPopular] = useState<RailStory[]>([]);
   const [readProgress, setReadProgress] = useState(0);
+  const [previewMode, setPreviewMode] = useState(false);
 
   const loadRails = async (activeId: number) => {
     const client = getSupabase();
@@ -43,10 +44,36 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
   }, []);
 
   useEffect(() => {
-    params.then(({ id }) => {
+    params.then(async ({ id }) => {
       const articleId = Number(id);
       if (!Number.isInteger(articleId) || articleId < 1) { setMissing(true); return; }
-      getSupabase().from("articles").select("id,title,category,excerpt,body,image_url,gallery,published_at,views,author_email,author_name,author_role").eq("id", articleId).eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).maybeSingle().then(({ data }) => {
+
+      const client = getSupabase();
+      const fields = "id,title,category,excerpt,body,image_url,gallery,published_at,views,author_email,author_name,author_role";
+      const wantsPreview = new URLSearchParams(window.location.search).get("preview") === "1";
+
+      if (wantsPreview) {
+        try {
+          const { data: authData } = await client.auth.getUser();
+          const email = authData.user?.email?.toLowerCase() || "";
+          if (email) {
+            const { data: staff } = await client.from("staff_accounts").select("active,role").eq("email", email).maybeSingle();
+            if (staff?.active) {
+              const { data: previewArticle } = await client.from("articles").select(fields).eq("id", articleId).is("archived_at", null).maybeSingle();
+              if (previewArticle) {
+                setPreviewMode(true);
+                setArticle(previewArticle as Article);
+                void loadRails(articleId);
+                return;
+              }
+            }
+          }
+        } catch {
+          // Jeśli sesja redakcji wygasła, przechodzimy do zwykłego publicznego odczytu.
+        }
+      }
+
+      client.from("articles").select(fields).eq("id", articleId).eq("status", "published").is("archived_at", null).lte("published_at", new Date().toISOString()).maybeSingle().then(({ data }) => {
         if (!data) { setMissing(true); return; }
         setArticle(data as Article);
         void loadRails(articleId);
@@ -73,5 +100,5 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
   const gallery = (article.gallery || []).filter(Boolean);
   const author = article.author_name?.trim() || article.author_email?.split("@")[0] || "REDAKCJA STREET SCOPE";
   const authorRole = article.author_role?.trim() || "REDAKTOR";
-  return <main className="article-page"><div className="reading-progress" style={{ width: `${readProgress}%` }} aria-hidden="true" /><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><a href="/#stories">← WSZYSTKIE TEMATY</a></header><div className="article-shell"><aside className="article-rail article-rail-left" aria-label="Materiały StreetScope"><StoryRail title="NAJNOWSZE" stories={latest} empty="Kolejne relacje są już w drodze." /><StoryRail title="NA TOPIE" stories={popular} empty="Tu pojawią się najczęściej czytane materiały." /></aside><article className="article-content"><p className="kicker"><i /> {article.category} · {date} · {article.views ?? 0} ODSŁON</p><h1>{article.title}</h1><p className="article-byline">TEKST: <b>{author}</b><span>·</span>{authorRole}</p><p className="article-lead">{article.excerpt}</p>{article.image_url && <img className="article-hero" src={article.image_url} alt="" />}{bodyHasRichContent ? <section className="article-rich" dangerouslySetInnerHTML={{ __html: safeBody }} /> : paragraphs.map((paragraph, index) => <p key={index} className="article-paragraph">{paragraph}</p>)}{gallery.length > 0 && <section className="article-gallery"><p className="kicker"><i /> GALERIA</p><div>{gallery.map((url, index) => <img src={url} alt={`Zdjęcie ${index + 1}`} key={`${url}-${index}`} />)}</div></section>}</article><aside className="article-rail article-rail-right" aria-label="Odnośniki StreetScope"><a href="/dolacz" className="rail-card rail-hiring"><p className="rail-label">REKRUTACJA</p><strong>DOŁĄCZ<br />DO NAS.</strong><span>Masz temat, styl i chcesz pisać? Zgłoś się →</span></a><a href="/zglos-temat" className="rail-card rail-cta"><p className="rail-label">MASZ TEMAT?</p><strong>ZGŁOŚ<br />TEMAT.</strong><span>Anonimowo lub z kontaktem →</span></a><a href="/o-redakcji" className="rail-card rail-office"><p className="rail-label">STREET SCOPE</p><strong>POZNAJ<br />REDAKCJĘ.</strong><span>Kto tworzy relacje z miasta →</span></a></aside></div><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>;
+  return <main className="article-page">{previewMode && <div style={{ position: "sticky", top: 0, zIndex: 9999, background: "#d71920", color: "#fff", padding: "9px 16px", textAlign: "center", fontWeight: 800, fontSize: 12, letterSpacing: "1.2px" }}>UKRYTY PODGLĄD REDAKCYJNY · MATERIAŁ NIE JEST WIDOCZNY PUBLICZNIE</div>}<div className="reading-progress" style={{ width: `${readProgress}%` }} aria-hidden="true" /><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><a href={previewMode ? `/redakcja/material?id=${article.id}` : "/#stories"}>{previewMode ? "← WRÓĆ DO EDYCJI" : "← WSZYSTKIE TEMATY"}</a></header><div className="article-shell"><aside className="article-rail article-rail-left" aria-label="Materiały StreetScope"><StoryRail title="NAJNOWSZE" stories={latest} empty="Kolejne relacje są już w drodze." /><StoryRail title="NA TOPIE" stories={popular} empty="Tu pojawią się najczęściej czytane materiały." /></aside><article className="article-content"><p className="kicker"><i /> {article.category} · {date} · {article.views ?? 0} ODSŁON</p><h1>{article.title}</h1><p className="article-byline">TEKST: <b>{author}</b><span>·</span>{authorRole}</p><p className="article-lead">{article.excerpt}</p>{article.image_url && <img className="article-hero" src={article.image_url} alt="" />}{bodyHasRichContent ? <section className="article-rich" dangerouslySetInnerHTML={{ __html: safeBody }} /> : paragraphs.map((paragraph, index) => <p key={index} className="article-paragraph">{paragraph}</p>)}{gallery.length > 0 && <section className="article-gallery"><p className="kicker"><i /> GALERIA</p><div>{gallery.map((url, index) => <img src={url} alt={`Zdjęcie ${index + 1}`} key={`${url}-${index}`} />)}</div></section>}</article><aside className="article-rail article-rail-right" aria-label="Odnośniki StreetScope"><a href="/dolacz" className="rail-card rail-hiring"><p className="rail-label">REKRUTACJA</p><strong>DOŁĄCZ<br />DO NAS.</strong><span>Masz temat, styl i chcesz pisać? Zgłoś się →</span></a><a href="/zglos-temat" className="rail-card rail-cta"><p className="rail-label">MASZ TEMAT?</p><strong>ZGŁOŚ<br />TEMAT.</strong><span>Anonimowo lub z kontaktem →</span></a><a href="/o-redakcji" className="rail-card rail-office"><p className="rail-label">STREET SCOPE</p><strong>POZNAJ<br />REDAKCJĘ.</strong><span>Kto tworzy relacje z miasta →</span></a></aside></div><footer><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>NEWS THAT <b>HITS</b> HOME</p></footer></main>;
 }
