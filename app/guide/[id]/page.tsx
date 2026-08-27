@@ -18,13 +18,27 @@ export default function GuideDetailPage({params}:{params:Promise<{id:string}>}){
   const [row,setRow]=useState<GuidePlace|null>(null);
   const [missing,setMissing]=useState(false);
   const [lightbox,setLightbox]=useState<string|null>(null);
+  const [previewMode,setPreviewMode]=useState(false);
 
   useEffect(()=>{
     let alive=true;
     params.then(async({id})=>{
       const n=Number(id);
       if(!Number.isInteger(n)||n<1){if(alive)setMissing(true);return;}
-      const {data}=await getSupabase().from("guide_places").select("*").eq("id",n).eq("active",true).is("archived_at",null).maybeSingle();
+      const client=getSupabase();
+      const wantsPreview=new URLSearchParams(window.location.search).get("preview")==="1";
+      if(wantsPreview){
+        try{
+          const {data}=await client.auth.getSession();
+          const token=data.session?.access_token;
+          if(token){
+            const response=await fetch(`/api/redakcja/hidden-preview?kind=guide&id=${n}`,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
+            const result=await response.json().catch(()=>({})) as {item?:GuidePlace};
+            if(alive&&response.ok&&result.item){setPreviewMode(true);setRow(result.item);return;}
+          }
+        }catch{/* zwykły publiczny odczyt poniżej */}
+      }
+      const {data}=await client.from("guide_places").select("*").eq("id",n).eq("active",true).is("archived_at",null).maybeSingle();
       if(!alive)return;
       if(!data){setMissing(true);return;}
       setRow(data as GuidePlace);
@@ -44,7 +58,8 @@ export default function GuideDetailPage({params}:{params:Promise<{id:string}>}){
   const label=categoryLabel[row.category]||row.category.toUpperCase();
   const gallery=(row.gallery||[]).filter(Boolean);
   return <main className="guide-detail-page">
-    <header className="guide-detail-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><nav><a href="/guide">← SCOPE GUIDE</a><a href="/fashion">FASHION</a><a href="/motor">MOTOR</a></nav></header>
+    {previewMode&&<div style={{position:"sticky",top:0,zIndex:9999,background:"#d71920",color:"#fff",padding:"9px 16px",textAlign:"center",fontWeight:800,fontSize:12,letterSpacing:"1.2px"}}>UKRYTY PODGLĄD REDAKCYJNY · WPIS NIE JEST WIDOCZNY PUBLICZNIE</div>}
+    <header className="guide-detail-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><nav><a href={previewMode?`/redakcja/guide?id=${row.id}`:"/guide"}>{previewMode?"← WRÓĆ DO EDYCJI":"← SCOPE GUIDE"}</a><a href="/fashion">FASHION</a><a href="/motor">MOTOR</a></nav></header>
     <section className="guide-detail-hero" style={row.image_url?{backgroundImage:`url(${row.image_url})`}:undefined}>
       <div className="guide-detail-shade"/>
       <article><span>{row.featured_label||label}</span><small>{label}{row.neighborhood?` · ${row.neighborhood}`:""}</small><h1>{row.name}</h1><p>{row.short_description||row.description||"Miejsce w Scope Guide."}</p></article>
