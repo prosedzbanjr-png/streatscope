@@ -2,6 +2,35 @@ import { jsonError } from "../../../../lib/server-security";
 
 type QueueKind = "feature" | "guide";
 type QueueAction = "approve" | "changes";
+type StaffRole = "editor_in_chief" | "deputy_editor_in_chief" | "journalist" | string;
+
+type FeatureRow = {
+  id:number;
+  kind:"fashion"|"motor";
+  title:string;
+  subtitle:string|null;
+  submitted_by:string|null;
+  created_by:string|null;
+  updated_at:string;
+  review_note:string|null;
+  review_status:string|null;
+  published:boolean;
+};
+
+type GuideRow = {
+  id:number;
+  name:string;
+  category:string;
+  neighborhood:string|null;
+  short_description:string|null;
+  submitted_by:string|null;
+  updated_at:string;
+  review_note:string|null;
+  review_status:string|null;
+  featured:boolean;
+  featured_home:boolean;
+  active:boolean;
+};
 
 const serviceHeaders = (serviceKey: string) => ({
   "Content-Type": "application/json",
@@ -55,33 +84,87 @@ async function readJson(response: Response) {
   return value;
 }
 
+function normalizeStatus(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isApproverRole(role: StaffRole | undefined) {
+  return role === "editor_in_chief" || role === "deputy_editor_in_chief";
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await authorize(request);
     if ("error" in auth) return auth.error;
     const { url, serviceKey } = auth;
 
+    // Pobieramy wszystkie niepubliczne wpisy. Dzięki temu kolejka nie znika,
+    // jeżeli starszy wpis ma review_status = null albo został zapisany jako draft.
     const [featureResponse, guideResponse] = await Promise.all([
-      fetch(`${url}/rest/v1/street_features?review_status=eq.review&archived_at=is.null&select=id,kind,title,subtitle,submitted_by,created_by,updated_at,review_note&order=updated_at.desc`, {
+      fetch(`${url}/rest/v1/street_features?published=eq.false&archived_at=is.null&select=id,kind,title,subtitle,submitted_by,created_by,updated_at,review_note,review_status,published&order=updated_at.desc`, {
         headers: serviceHeaders(serviceKey),
         cache: "no-store",
       }),
-      fetch(`${url}/rest/v1/guide_places?review_status=eq.review&archived_at=is.null&select=id,name,category,neighborhood,short_description,submitted_by,updated_at,review_note,featured,featured_home&order=updated_at.desc`, {
+      fetch(`${url}/rest/v1/guide_places?active=eq.false&archived_at=is.null&select=id,name,category,neighborhood,short_description,submitted_by,updated_at,review_note,review_status,featured,featured_home,active&order=updated_at.desc`, {
         headers: serviceHeaders(serviceKey),
         cache: "no-store",
       }),
     ]);
 
-    const [features, guides] = await Promise.all([readJson(featureResponse), readJson(guideResponse)]);
-    const featureRows = Array.isArray(features) ? features : [];
-    const guideRows = Array.isArray(guides) ? guides : [];
+    const [featureRaw, guideRaw] = await Promise.all([readJson(featureResponse), readJson(guideResponse)]);
+    const allFeatures = (Array.isArray(featureRaw) ? featureRaw : []) as FeatureRow[];
+    const allGuides = (Array.isArray(guideRaw) ? guideRaw : []) as GuideRow[];
+
+    // Ustalamy role autorów. Właściwe review zawsze trafia do kolejki.
+    // Fallback wpuszcza też stare/null/draft wpisy wysłane przez zwykłego pracownika,
+    // ale nie pokazuje prywatnych szkiców Naczelnego/Zastępcy.
+    const emails = Array.from(new Set([
+      ...allFeatures.flatMap(row => [row.submitted_by, row.created_by]),
+      ...allGuides.map(row => row.submitted_by),
+    ].filter((value): value is string => Boolean(value)).map(value => value.toLowerCase())));
+
+    const roles = new Map<string, StaffRole>();
+    if (emails.length) {
+      const encoded = emails.map(email => `\"${email.replace(/\"/g, "")}\"`).join(",");
+      const staffResponse = await fetch(`${url}/rest/v1/staff_accounts?email=in.(${encodeURIComponent(encoded)})&select=email,role`, {
+        headers: serviceHeaders(serviceKey),
+        cache: "no-store",
+      });
+      if (staffResponse.ok) {
+        const staffRows = await staffResponse.json() as Array<{ email?:string; role?:StaffRole }>;
+        staffRows.forEach(row => { if (row.email) roles.set(row.email.toLowerCase(), row.role || ""); });
+      }
+    }
+
+    const pendingFeature = (row: FeatureRow) => {
+      const status = normalizeStatus(row.review_status);
+      if (status === "review") return true;
+      if (status === "published" || status === "changes_requested") return false;
+      const submitter = (row.submitted_by || row.created_by || "").toLowerCase();
+      return Boolean(submitter && !isApproverRole(roles.get(submitter)));
+    };
+
+    const pendingGuide = (row: GuideRow) => {
+      const status = normalizeStatus(row.review_status);
+      if (status === "review") return true;
+      if (status === "published" || status === "changes_requested") return false;
+      const submitter = (row.submitted_by || "").toLowerCase();
+      return Boolean(submitter && !isApproverRole(roles.get(submitter)));
+    };
+
+    const features = allFeatures.filter(pendingFeature);
+    const guides = allGuides.filter(pendingGuide);
 
     return Response.json({
       ok: true,
-      features: featureRows,
-      guides: guideRows,
-      counts: { features: featureRows.length, guides: guideRows.length },
-    }, { headers: { "Cache-Control": "no-store" } });
+      features,
+      guides,
+      counts: { features: features.length, guides: guides.length },
+      diagnostics: {
+        hiddenFeatures: allFeatures.length,
+        hiddenGuides: allGuides.length,
+      },
+    }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
     console.error("StreetScope review queue load failed", error);
     return jsonError(error instanceof Error ? error.message : "Nie udało się pobrać kolejki akceptacji.", 500, "review_queue_failed");
@@ -144,7 +227,7 @@ export async function PATCH(request: Request) {
       cache: "no-store",
     }).catch(() => undefined);
 
-    return Response.json({ ok: true, item: row }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ ok: true, item: row }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
     console.error("StreetScope review queue update failed", error);
     return jsonError(error instanceof Error ? error.message : "Nie udało się zmienić statusu wpisu.", 500, "review_queue_update_failed");
