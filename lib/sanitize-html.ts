@@ -12,6 +12,51 @@ export function sanitizeArticleHtml(value: string) {
   return template.innerHTML;
 }
 
+function normalizeReaderText(element: HTMLElement) {
+  return (element.textContent || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase("pl-PL");
+}
+
+/**
+ * Older editor saves can contain the same visible section twice: once as
+ * freely-positioned canvas blocks and once as ordinary document-flow nodes.
+ * Desktop styling can make those copies overlap, while LB Phone lays them out
+ * one after another. Remove only substantial, immediately repeated runs so a
+ * deliberate short repeated phrase is left untouched.
+ */
+function removeAdjacentDuplicateRuns(root: HTMLElement) {
+  let removedSomething = true;
+
+  while (removedSomething) {
+    removedSomething = false;
+    const nodes = Array.from(root.children) as HTMLElement[];
+    const fingerprints = nodes.map(normalizeReaderText);
+
+    duplicateSearch:
+    for (let start = 0; start < nodes.length; start += 1) {
+      const maxLength = Math.floor((nodes.length - start) / 2);
+
+      for (let length = maxLength; length >= 1; length -= 1) {
+        const first = fingerprints.slice(start, start + length);
+        const second = fingerprints.slice(start + length, start + length * 2);
+        if (!first.length || first.some(value => !value)) continue;
+        if (!first.every((value, index) => value === second[index])) continue;
+
+        const combinedLength = first.join(" ").length;
+        if (length === 1 && combinedLength < 120) continue;
+        if (length > 1 && combinedLength < 80) continue;
+
+        nodes.slice(start + length, start + length * 2).forEach(node => node.remove());
+        removedSomething = true;
+        break duplicateSearch;
+      }
+    }
+  }
+}
+
 /**
  * The editor canvas stores drag coordinates to make writing convenient. Those
  * coordinates are not an article layout system and must never be applied to
@@ -53,5 +98,7 @@ export function toReaderArticleHtml(value: string) {
     copy.querySelectorAll<HTMLElement>("*").forEach(clearLayout);
     output.append(copy);
   });
+
+  removeAdjacentDuplicateRuns(output);
   return sanitizeArticleHtml(output.innerHTML);
 }
