@@ -9,6 +9,7 @@ type Tip = { id:number; title:string; district:string; description:string; conta
 type Review = { id:number; title:string; excerpt:string; category:string; author_email:string; updated_at:string; review_note:string|null; scheduled_for:string|null };
 type FeatureReview = { id:number; kind:"fashion"|"motor"; title:string; subtitle:string|null; submitted_by:string|null; created_by:string|null; updated_at:string; review_note:string|null };
 type GuideReview = { id:number; name:string; category:string; neighborhood:string|null; short_description:string|null; submitted_by:string|null; updated_at:string; review_note:string|null; featured:boolean; featured_home:boolean };
+type ReviewQueue = { ok?:boolean; features?:FeatureReview[]; guides?:GuideReview[]; error?:string; message?:string };
 
 export default function ZarzadzajPage() {
   const [allowed, setAllowed] = useState<boolean|null>(null);
@@ -29,19 +30,42 @@ export default function ZarzadzajPage() {
     await fetch("/api/discord",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({event:"published",articleId})});
   }
 
+  async function getReviewQueue():Promise<ReviewQueue>{
+    const {data}=await client().auth.getSession();
+    const token=data.session?.access_token;
+    if(!token)return {features:[],guides:[],error:"Sesja redakcji wygasła. Zaloguj się ponownie."};
+    const response=await fetch("/api/redakcja/review-queue",{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
+    const result=await response.json().catch(()=>({})) as ReviewQueue;
+    if(!response.ok)return {features:[],guides:[],error:result.message||result.error||`Kolejka akceptacji zwróciła błąd ${response.status}.`};
+    return {features:result.features||[],guides:result.guides||[]};
+  }
+
+  async function reviewQueueAction(kind:"feature"|"guide",id:number,action:"approve"|"changes",note?:string){
+    const {data}=await client().auth.getSession();
+    const token=data.session?.access_token;
+    if(!token)throw new Error("Sesja redakcji wygasła. Zaloguj się ponownie.");
+    const response=await fetch("/api/redakcja/review-queue",{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+      body:JSON.stringify({kind,id,action,note:note||""})
+    });
+    const result=await response.json().catch(()=>({})) as {message?:string;error?:string};
+    if(!response.ok)throw new Error(result.message||result.error||`Nie udało się zmienić statusu wpisu (${response.status}).`);
+  }
+
   async function load() {
-    const [{data: rows, error: tipsError}, storage, {data: queued}, {data: features}, {data: guides}] = await Promise.all([
+    const [{data: rows, error: tipsError}, storage, {data: queued, error: reviewError}, reviewQueue] = await Promise.all([
       client().from("tips").select("id,title,district,description,contact,status,created_at,archived_at,archived_by").is("archived_at", null).neq("status", "archived").order("created_at", {ascending:false}).limit(80),
       client().storage.from("article-images").list("", {limit:100, sortBy:{column:"created_at",order:"desc"}}),
       client().from("articles").select("id,title,excerpt,category,author_email,updated_at,review_note,scheduled_for").eq("status","draft").eq("review_status","review").is("archived_at",null).order("updated_at",{ascending:false}),
-      client().from("street_features").select("id,kind,title,subtitle,submitted_by,created_by,updated_at,review_note").eq("review_status","review").is("archived_at",null).order("updated_at",{ascending:false}),
-      client().from("guide_places").select("id,name,category,neighborhood,short_description,submitted_by,updated_at,review_note,featured,featured_home").eq("review_status","review").order("updated_at",{ascending:false})
+      getReviewQueue()
     ]);
-    if (tipsError) setMessage(tipsError.message);
+    const firstError=tipsError?.message||reviewError?.message||reviewQueue.error||storage.error?.message||"";
+    if(firstError)setMessage(firstError);
     setTips((rows as Tip[]|null)??[]);
     setReviews((queued as Review[]|null)??[]);
-    setFeatureReviews((features as FeatureReview[]|null)??[]);
-    setGuideReviews((guides as GuideReview[]|null)??[]);
+    setFeatureReviews(reviewQueue.features??[]);
+    setGuideReviews(reviewQueue.guides??[]);
     setMedia((storage.data??[]).filter(file => file.name).map(file => ({name:file.name,url:client().storage.from("article-images").getPublicUrl(file.name).data.publicUrl})));
   }
 
@@ -83,24 +107,24 @@ export default function ZarzadzajPage() {
   }
 
   async function approveFeature(item:FeatureReview){
-    if(!confirm(`Opublikować ${item.kind==="fashion"?"LOOK":"BUILD"} „${item.title}”?`))return;const now=new Date().toISOString();
-    const {error}=await client().from("street_features").update({published:true,review_status:"published",review_note:null,reviewed_by:currentEmail,reviewed_at:now,updated_at:now}).eq("id",item.id);
-    setMessage(error?error.message:"LOOK / BUILD zatwierdzony i opublikowany.");if(!error){await logActivity({actorEmail:currentEmail,action:"feature_published",entityType:"feature",entityId:item.id,entityLabel:item.title,details:{kind:item.kind}});await load();}
+    if(!confirm(`Opublikować ${item.kind==="fashion"?"LOOK":"BUILD"} „${item.title}”?`))return;
+    try{await reviewQueueAction("feature",item.id,"approve");setMessage("LOOK / BUILD zatwierdzony i opublikowany.");await load();}
+    catch(error){setMessage(error instanceof Error?error.message:"Nie udało się zatwierdzić LOOK / BUILD.");}
   }
   async function changesFeature(item:FeatureReview){
-    const note=prompt("Co dziennikarz ma poprawić?",item.review_note||"");if(note===null)return;const now=new Date().toISOString();
-    const {error}=await client().from("street_features").update({published:false,review_status:"changes_requested",review_note:note.trim()||"Proszę poprawić wpis.",reviewed_by:currentEmail,reviewed_at:now,updated_at:now}).eq("id",item.id);
-    setMessage(error?error.message:"LOOK / BUILD odesłany do poprawy.");if(!error){await logActivity({actorEmail:currentEmail,action:"feature_changes_requested",entityType:"feature",entityId:item.id,entityLabel:item.title,details:{kind:item.kind,note}});await load();}
+    const note=prompt("Co dziennikarz ma poprawić?",item.review_note||"");if(note===null)return;
+    try{await reviewQueueAction("feature",item.id,"changes",note.trim()||"Proszę poprawić wpis.");setMessage("LOOK / BUILD odesłany do poprawy.");await load();}
+    catch(error){setMessage(error instanceof Error?error.message:"Nie udało się odesłać LOOK / BUILD do poprawy.");}
   }
   async function approveGuide(item:GuideReview){
-    if(!confirm(`Opublikować w Scope Guide „${item.name}”?`))return;const now=new Date().toISOString();
-    const {error}=await client().from("guide_places").update({active:true,review_status:"published",review_note:null,reviewed_by:currentEmail,reviewed_at:now,updated_at:now}).eq("id",item.id);
-    setMessage(error?error.message:"Wpis Scope Guide zatwierdzony i opublikowany.");if(!error){await logActivity({actorEmail:currentEmail,action:"guide_published",entityType:"guide_place",entityId:item.id,entityLabel:item.name});await load();}
+    if(!confirm(`Opublikować w Scope Guide „${item.name}”?`))return;
+    try{await reviewQueueAction("guide",item.id,"approve");setMessage("Wpis Scope Guide zatwierdzony i opublikowany.");await load();}
+    catch(error){setMessage(error instanceof Error?error.message:"Nie udało się zatwierdzić wpisu Scope Guide.");}
   }
   async function changesGuide(item:GuideReview){
-    const note=prompt("Co dziennikarz ma poprawić?",item.review_note||"");if(note===null)return;const now=new Date().toISOString();
-    const {error}=await client().from("guide_places").update({active:false,review_status:"changes_requested",review_note:note.trim()||"Proszę poprawić wpis.",reviewed_by:currentEmail,reviewed_at:now,updated_at:now}).eq("id",item.id);
-    setMessage(error?error.message:"Wpis Scope Guide odesłany do poprawy.");if(!error){await logActivity({actorEmail:currentEmail,action:"guide_changes_requested",entityType:"guide_place",entityId:item.id,entityLabel:item.name,details:{note}});await load();}
+    const note=prompt("Co dziennikarz ma poprawić?",item.review_note||"");if(note===null)return;
+    try{await reviewQueueAction("guide",item.id,"changes",note.trim()||"Proszę poprawić wpis.");setMessage("Wpis Scope Guide odesłany do poprawy.");await load();}
+    catch(error){setMessage(error instanceof Error?error.message:"Nie udało się odesłać wpisu Scope Guide do poprawy.");}
   }
 
   if(allowed===null)return <main className="manage-page">ŁADOWANIE…</main>;
@@ -112,9 +136,9 @@ export default function ZarzadzajPage() {
 
     {canApprove&&<section className="approval-section"><p className="kicker"><i/> ARTYKUŁY DO AKCEPTACJI</p>{reviews.length?<div className="approval-list">{reviews.map(article=><article key={article.id}><span>{article.category} · OD {article.author_email}</span><h2>{article.title}</h2><p>{article.excerpt}</p>{article.scheduled_for&&<small>PLANOWANA PUBLIKACJA: {new Date(article.scheduled_for).toLocaleString("pl-PL")}</small>}{article.review_note&&<small>OSTATNIA UWAGA: {article.review_note}</small>}<div><a href={`/redakcja/material?id=${article.id}`}>OTWÓRZ I POPRAW →</a><button onClick={()=>requestChanges(article)}>ODEŚLIJ DO POPRAWY</button><button className="approve" onClick={()=>approve(article)}>ZATWIERDŹ I OPUBLIKUJ →</button></div></article>)}</div>:<p className="empty-note">Brak artykułów czekających na decyzję.</p>}</section>}
 
-    {canApprove&&<section className="approval-section"><p className="kicker"><i/> LOOK / BUILD DO AKCEPTACJI</p>{featureReviews.length?<div className="approval-list">{featureReviews.map(item=><article key={`feature-${item.id}`}><span>{item.kind==="fashion"?"FASHION / LOOK":"MOTOR / BUILD"} · OD {item.submitted_by||item.created_by||"REDAKCJI"}</span><h2>{item.title}</h2><p>{item.subtitle||"Street Culture"}</p><div><a href="/redakcja/kultura">OTWÓRZ EDYTOR →</a><button onClick={()=>changesFeature(item)}>ODEŚLIJ DO POPRAWY</button><button className="approve" onClick={()=>approveFeature(item)}>ZATWIERDŹ I OPUBLIKUJ →</button></div></article>)}</div>:<p className="empty-note">Brak LOOK / BUILD czekających na decyzję.</p>}</section>}
+    {canApprove&&<section className="approval-section"><p className="kicker"><i/> LOOK / BUILD DO AKCEPTACJI</p>{featureReviews.length?<div className="approval-list">{featureReviews.map(item=><article key={`feature-${item.id}`}><span>{item.kind==="fashion"?"FASHION / LOOK":"MOTOR / BUILD"} · OD {item.submitted_by||item.created_by||"REDAKCJI"}</span><h2>{item.title}</h2><p>{item.subtitle||"Street Culture"}</p><div><a href={`/redakcja/kultura?id=${item.id}`}>OTWÓRZ EDYTOR →</a><button onClick={()=>changesFeature(item)}>ODEŚLIJ DO POPRAWY</button><button className="approve" onClick={()=>approveFeature(item)}>ZATWIERDŹ I OPUBLIKUJ →</button></div></article>)}</div>:<p className="empty-note">Brak LOOK / BUILD czekających na decyzję.</p>}</section>}
 
-    {canApprove&&<section className="approval-section"><p className="kicker"><i/> SCOPE GUIDE DO AKCEPTACJI</p>{guideReviews.length?<div className="approval-list">{guideReviews.map(item=><article key={`guide-${item.id}`}><span>{item.category} · {item.neighborhood||"LOS SANTOS"} · OD {item.submitted_by||"REDAKCJI"}</span><h2>{item.name}</h2><p>{item.short_description||"Wpis Scope Guide"}</p><small>{item.featured?"★ WYRÓŻNIENIE · ":""}{item.featured_home?"PROMOCJA NA GŁÓWNEJ":"ZWYKŁY WPIS"}</small><div><a href="/redakcja/guide">OTWÓRZ EDYTOR →</a><button onClick={()=>changesGuide(item)}>ODEŚLIJ DO POPRAWY</button><button className="approve" onClick={()=>approveGuide(item)}>ZATWIERDŹ I OPUBLIKUJ →</button></div></article>)}</div>:<p className="empty-note">Brak wpisów Guide czekających na decyzję.</p>}</section>}
+    {canApprove&&<section className="approval-section"><p className="kicker"><i/> SCOPE GUIDE DO AKCEPTACJI</p>{guideReviews.length?<div className="approval-list">{guideReviews.map(item=><article key={`guide-${item.id}`}><span>{item.category} · {item.neighborhood||"LOS SANTOS"} · OD {item.submitted_by||"REDAKCJI"}</span><h2>{item.name}</h2><p>{item.short_description||"Wpis Scope Guide"}</p><small>{item.featured?"★ WYRÓŻNIENIE · ":""}{item.featured_home?"PROMOCJA NA GŁÓWNEJ":"ZWYKŁY WPIS"}</small><div><a href={`/redakcja/guide?id=${item.id}`}>OTWÓRZ EDYTOR →</a><button onClick={()=>changesGuide(item)}>ODEŚLIJ DO POPRAWY</button><button className="approve" onClick={()=>approveGuide(item)}>ZATWIERDŹ I OPUBLIKUJ →</button></div></article>)}</div>:<p className="empty-note">Brak wpisów Guide czekających na decyzję.</p>}</section>}
 
     <section className="manage-grid"><div><p className="kicker"><i/> ZGŁOSZENIA OD MIESZKAŃCÓW</p><div className="tip-list">{tips.length?tips.map(t=><article key={t.id}><span>{t.status}</span><h2>{t.title}</h2><b>{t.district} · {new Date(t.created_at).toLocaleDateString("pl-PL")}</b><p>{t.description}</p>{t.contact&&<small>KONTAKT: {t.contact}</small>}<div><button onClick={()=>setTip(t.id,"reviewing")}>PRZYJMIJ</button><button onClick={()=>setTip(t.id,"used")}>UŻYTE</button><button onClick={()=>setTip(t.id,"archived")}>ODRZUĆ / ARCHIWIZUJ</button><a href={`/redakcja/material?tip=${t.id}`}>ZAMIEŃ W MATERIAŁ →</a></div></article>):<p>Brak aktywnych zgłoszeń.</p>}</div></div><aside><p className="kicker"><i/> BIBLIOTEKA MEDIÓW</p><div className="media-library">{media.length?media.map(m=><button key={m.name} onClick={()=>copy(m.url)} title="Kliknij, aby skopiować link"><img src={m.url} alt=""/><span>KOPIUJ LINK</span></button>):<p>Nie ma jeszcze zdjęć.</p>}</div></aside></section>
   </main>;
