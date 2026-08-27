@@ -25,10 +25,17 @@ export default function LbPhonePublishToggle({ mode }: Props) {
   const [allowed, setAllowed] = useState(false);
   const [armed, setArmed] = useState(false);
   const [note, setNote] = useState("");
+  const [previewId, setPreviewId] = useState(0);
   const armedRef = useRef(false);
   const sendingRef = useRef(false);
 
   useEffect(() => { armedRef.current = armed; }, [armed]);
+
+  useEffect(() => {
+    if (mode !== "article" || typeof window === "undefined") return;
+    const id = Number(new URLSearchParams(window.location.search).get("id"));
+    if (Number.isInteger(id) && id > 0) setPreviewId(id);
+  }, [mode]);
 
   useEffect(() => {
     let active = true;
@@ -51,10 +58,16 @@ export default function LbPhonePublishToggle({ mode }: Props) {
     const table = mode === "article" ? "articles" : mode === "culture" ? "street_features" : "guide_places";
 
     const onWrite = (event: Event) => {
-      if (!armedRef.current || sendingRef.current) return;
       const detail = (event as CustomEvent<WriteDetail>).detail || {};
       const url = String(detail.url || "");
-      if (!url.includes(`/rest/v1/${table}`) || !detail.body) return;
+
+      if (mode === "article" && url.includes("/rest/v1/articles")) {
+        const writtenId = parseEntityId(detail.result, url);
+        if (writtenId) setPreviewId(writtenId);
+      }
+
+      if (!armedRef.current || sendingRef.current || !detail.body) return;
+      if (!url.includes(`/rest/v1/${table}`)) return;
 
       let payload: Record<string, unknown> = {};
       try {
@@ -125,7 +138,19 @@ export default function LbPhonePublishToggle({ mode }: Props) {
 
   if (!allowed) return null;
 
+  const openHiddenPreview = () => {
+    if (!previewId) {
+      setNote("Najpierw zapisz materiał jako szkic. Potem otworzysz go w ukrytym widoku strony.");
+      return;
+    }
+    window.open(`/artykul/${previewId}?preview=1`, "_blank", "noopener,noreferrer");
+  };
+
   return <aside className="lb-phone-publish-toggle" aria-live="polite">
+    {mode === "article" && <div className="hidden-preview-control">
+      <button type="button" onClick={openHiddenPreview}>UKRYTY PODGLĄD ↗</button>
+      <small>Otwiera prawdziwy widok artykułu. Materiał pozostaje ukryty i nie trafia na stronę główną.</small>
+    </div>}
     <label>
       <input type="checkbox" checked={armed} onChange={event => { setArmed(event.target.checked); setNote(event.target.checked ? "Po publikacji push trafi do kolejki Supabase." : ""); }} />
       <span><b>POWIADOM LB PHONE</b><small>Po publikacji dodaj mieszkańcom push do kolejki Supabase.</small></span>
