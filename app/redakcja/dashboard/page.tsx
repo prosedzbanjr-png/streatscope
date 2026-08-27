@@ -22,6 +22,16 @@ export default function DashboardPage(){
   const [message,setMessage]=useState("");
   const client=()=>getSupabase();
 
+  async function getProtectedReviewCounts(){
+    const {data}=await client().auth.getSession();
+    const token=data.session?.access_token;
+    if(!token)return {features:0,guides:0,error:"Sesja redakcji wygasła."};
+    const response=await fetch("/api/redakcja/review-queue",{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
+    const result=await response.json().catch(()=>({})) as {counts?:{features?:number;guides?:number};message?:string;error?:string};
+    if(!response.ok)return {features:0,guides:0,error:result.message||result.error||`Kolejka akceptacji zwróciła błąd ${response.status}.`};
+    return {features:Number(result.counts?.features||0),guides:Number(result.counts?.guides||0),error:""};
+  }
+
   useEffect(()=>{ client().auth.getUser().then(async({data})=>{
     const email=data.user?.email?.toLowerCase()||"";
     const {data:person}=await client().from("staff_accounts").select("role,active").eq("email",email).maybeSingle();
@@ -41,23 +51,26 @@ export default function DashboardPage(){
     const commonErrors=common.map(x=>x.error).filter(Boolean);
 
     if(chief){
-      const admin=await Promise.all([
-        client().from("articles").select("id",{count:"exact",head:true}).eq("review_status","review").is("archived_at",null),
-        client().from("street_features").select("id",{count:"exact",head:true}).eq("review_status","review").is("archived_at",null),
-        client().from("guide_places").select("id",{count:"exact",head:true}).eq("review_status","review").is("archived_at",null),
-        client().from("tips").select("id",{count:"exact",head:true}).is("archived_at",null).neq("status","archived"),
-        client().from("recruitment_applications").select("id",{count:"exact",head:true}).eq("status","new"),
-        client().from("articles").select("id",{count:"exact",head:true}).not("archived_at","is",null),
-        client().from("street_features").select("id",{count:"exact",head:true}).not("archived_at","is",null),
-        client().from("guide_places").select("id",{count:"exact",head:true}).not("archived_at","is",null),
-        client().from("tips").select("id",{count:"exact",head:true}).or("archived_at.not.is.null,status.eq.archived"),
-        client().from("staff_accounts").select("id",{count:"exact",head:true}).eq("active",true),
-        client().from("activity_logs").select("id,actor_email,action,entity_type,entity_label,created_at").order("created_at",{ascending:false}).limit(8)
+      const [admin,protectedReview] = await Promise.all([
+        Promise.all([
+          client().from("articles").select("id",{count:"exact",head:true}).eq("review_status","review").is("archived_at",null),
+          client().from("tips").select("id",{count:"exact",head:true}).is("archived_at",null).neq("status","archived"),
+          client().from("recruitment_applications").select("id",{count:"exact",head:true}).eq("status","new"),
+          client().from("articles").select("id",{count:"exact",head:true}).not("archived_at","is",null),
+          client().from("street_features").select("id",{count:"exact",head:true}).not("archived_at","is",null),
+          client().from("guide_places").select("id",{count:"exact",head:true}).not("archived_at","is",null),
+          client().from("tips").select("id",{count:"exact",head:true}).or("archived_at.not.is.null,status.eq.archived"),
+          client().from("staff_accounts").select("id",{count:"exact",head:true}).eq("active",true),
+          client().from("activity_logs").select("id,actor_email,action,entity_type,entity_label,created_at").order("created_at",{ascending:false}).limit(8)
+        ]),
+        getProtectedReviewCounts()
       ]);
-      const [articleReview,featureReview,guideReview,tips,recruitment,archivedArticles,archivedFeatures,archivedGuides,archivedTips,staff,recentLogs]=admin;
-      nextCounts={...nextCounts,review:(articleReview.count||0)+(featureReview.count||0)+(guideReview.count||0),tips:tips.count||0,recruitment:recruitment.count||0,archivedMaterials:(archivedArticles.count||0)+(archivedFeatures.count||0)+(archivedGuides.count||0),archivedTips:archivedTips.count||0,staff:staff.count||0};
+      const [articleReview,tips,recruitment,archivedArticles,archivedFeatures,archivedGuides,archivedTips,staff,recentLogs]=admin;
+      nextCounts={...nextCounts,review:(articleReview.count||0)+protectedReview.features+protectedReview.guides,tips:tips.count||0,recruitment:recruitment.count||0,archivedMaterials:(archivedArticles.count||0)+(archivedFeatures.count||0)+(archivedGuides.count||0),archivedTips:archivedTips.count||0,staff:staff.count||0};
       setLogs((recentLogs.data as LogRow[]|null)??[]);
-      const errors=[...commonErrors,...admin.map(x=>x.error).filter(Boolean)]; if(errors.length)setMessage(errors[0]?.message||"Nie udało się pobrać części danych.");
+      const errors=[...commonErrors,...admin.map(x=>x.error).filter(Boolean)];
+      if(errors.length)setMessage(errors[0]?.message||"Nie udało się pobrać części danych.");
+      else if(protectedReview.error)setMessage(protectedReview.error);
     } else if(commonErrors.length){setMessage(commonErrors[0]?.message||"Nie udało się pobrać części danych.");}
 
     setCounts(nextCounts);
