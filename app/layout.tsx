@@ -20,13 +20,13 @@ export const metadata: Metadata = {
     locale: "pl_PL",
     type: "website",
     url: "https://streetscope.vercel.app",
-    images: [{ url: "/images/streetscope-og.jpg", width: 1200, height: 630, alt: "StreetScope | News That Hits Home" }],
+    images: [{ url: "/og-v2", width: 1200, height: 630, alt: "StreetScope | News That Hits Home" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "StreetScope | News That Hits Home",
     description: "Niezależne relacje z miasta. Tematy, które trafiają w punkt.",
-    images: ["/images/streetscope-og.jpg"],
+    images: ["/og-v2"],
   },
   icons: {
     icon: "/favicon.svg",
