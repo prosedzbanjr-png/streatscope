@@ -43,10 +43,17 @@ function collapseRepeatedVisibleText(element: HTMLElement) {
   }
 }
 
+function hasDirectReaderBlockChild(element: HTMLElement) {
+  return Array.from(element.children).some(child => {
+    const tag = child.tagName;
+    return tag === "P" || tag === "H2" || tag === "H3" || tag === "BLOCKQUOTE" || tag === "DIV";
+  });
+}
+
 function readerLeafBlocks(root: HTMLElement) {
   return Array.from(root.querySelectorAll<HTMLElement>("p,h2,h3,blockquote,div")).filter(element => {
     if (element.tagName !== "DIV") return true;
-    return !element.querySelector(":scope > p,:scope > h2,:scope > h3,:scope > blockquote,:scope > div");
+    return !hasDirectReaderBlockChild(element);
   });
 }
 
@@ -87,7 +94,7 @@ function repairReaderDom() {
     if (!element.textContent?.trim() && !mediaInside(element)) element.remove();
   });
 
-  document.documentElement.dataset.ssReaderRepair = "20260830-2";
+  document.documentElement.dataset.ssReaderRepair = "20260830-3";
 }
 
 export default function ReaderDomRepair() {
