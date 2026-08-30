@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Deployment retry marker: keep this script behavior unchanged.
 function normalize(value) {
   return value
     .replace(/<br\s*\/?>/gi, ' ')
@@ -102,7 +103,6 @@ function removeLaterTargetCopies(html) {
     output = output.slice(0, start) + output.slice(end);
   }
 
-  // Remove empty wrappers left by surgical text removal.
   output = output
     .replace(/<p\b[^>]*>\s*(?:<br\s*\/?>\s*)?<\/p\s*>/gi, '')
     .replace(/<div\b([^>]*)class=(['"])([^'"]*\bfree-text\b[^'"]*)\2([^>]*)>\s*(?:<br\s*\/?>\s*)?<\/div\s*>/gi, '')
