@@ -1,4 +1,4 @@
-// Deploy marker: repeated-paragraph fix v2
+// Deploy marker: repeated-paragraph fix v3
 export function sanitizeArticleHtml(value: string) {
   if (typeof window === "undefined") return value;
   const template = document.createElement("template");
@@ -55,7 +55,7 @@ function removeImmediateRepeatedFreeTextLines(lines: string[]) {
 
     duplicateSearch:
     for (let start = 0; start < output.length; start += 1) {
-      const maxLength = Math.min(10, Math.floor((output.length - start) / 2));
+      const maxLength = Math.min(12, Math.floor((output.length - start) / 2));
       for (let length = maxLength; length >= 2; length -= 1) {
         const first = fingerprints.slice(start, start + length);
         const second = fingerprints.slice(start + length, start + length * 2);
@@ -91,12 +91,19 @@ function normalizeFreeTextHtml(element: HTMLElement): string {
   };
 
   Array.from(working.childNodes).forEach(node => {
+    if (node instanceof HTMLBRElement) {
+      flushInline();
+      lines.push("");
+      return;
+    }
+
     if (node instanceof HTMLElement && lineContainers.has(node.tagName)) {
       flushInline();
       const text = normalizeReaderText(node);
       lines.push(text || hasReaderMedia(node) ? normalizeFreeTextHtml(node) : "");
       return;
     }
+
     inline.append(node.cloneNode(true));
   });
 
@@ -171,7 +178,7 @@ function removeImmediateRepeatedReaderRuns(root: HTMLElement) {
 
     duplicateSearch:
     for (let start = 0; start < nodes.length; start += 1) {
-      const maxLength = Math.min(10, Math.floor((nodes.length - start) / 2));
+      const maxLength = Math.min(12, Math.floor((nodes.length - start) / 2));
 
       for (let length = maxLength; length >= 1; length -= 1) {
         const first = fingerprints.slice(start, start + length);
