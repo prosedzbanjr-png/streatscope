@@ -1,3 +1,4 @@
+// Deploy marker: repeated-paragraph fix
 export function sanitizeArticleHtml(value: string) {
   if (typeof window === "undefined") return value;
   const template = document.createElement("template");
