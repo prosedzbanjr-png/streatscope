@@ -38,6 +38,46 @@ function hasReaderMedia(element: HTMLElement) {
   return Boolean(element.querySelector("img,video,iframe,svg,hr"));
 }
 
+function readerLineFingerprint(value: string) {
+  const holder = document.createElement("div");
+  holder.innerHTML = value;
+  return normalizeReaderText(holder);
+}
+
+/*
+ * Some legacy free-text fields contain a whole paragraph sequence twice inside
+ * ONE draggable field: A+B+C+A+B+C. Root-level dedupe cannot see that because
+ * the reader receives it as a single node. Remove only immediate repeated runs
+ * of at least TWO logical lines. A single repeated paragraph is left alone.
+ */
+function removeImmediateRepeatedFreeTextLines(lines: string[]) {
+  const output = [...lines];
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    const fingerprints = output.map(readerLineFingerprint);
+
+    duplicateSearch:
+    for (let start = 0; start < output.length; start += 1) {
+      const maxLength = Math.min(8, Math.floor((output.length - start) / 2));
+      for (let length = maxLength; length >= 2; length -= 1) {
+        const first = fingerprints.slice(start, start + length);
+        const second = fingerprints.slice(start + length, start + length * 2);
+        if (!first.length || first.some(value => !value)) continue;
+        if (!first.every((value, index) => value === second[index])) continue;
+        if (first.join(" ").length < 160) continue;
+
+        output.splice(start + length, length);
+        changed = true;
+        break duplicateSearch;
+      }
+    }
+  }
+
+  return output;
+}
+
 /*
  * Free-text fields are normalized only for layout. We deliberately do NOT
  * globally deduplicate their text here. The editor remains the source of truth.
@@ -69,7 +109,8 @@ function normalizeFreeTextHtml(element: HTMLElement): string {
   });
 
   flushInline();
-  return lines.length ? lines.join("<br>") : working.innerHTML;
+  const deduped = removeImmediateRepeatedFreeTextLines(lines);
+  return deduped.length ? deduped.join("<br>") : working.innerHTML;
 }
 
 function removeEmptyReaderParagraphs(root: HTMLElement) {
