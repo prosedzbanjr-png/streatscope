@@ -20,6 +20,51 @@ function normalizeReaderText(element: HTMLElement) {
     .toLocaleLowerCase("pl-PL");
 }
 
+function hasReaderMedia(element: HTMLElement) {
+  return Boolean(element.querySelector("img,video,iframe,svg,hr"));
+}
+
+/**
+ * contentEditable is inconsistent between Chromium/CEF builds. A single Enter
+ * may be saved as <div>next line</div>, while another build saves <br>. Wrapping
+ * that raw markup in a reader <p> creates nested flow blocks and LB Phone can
+ * render one paragraph break as two. Flatten only editor-generated DIV/P line
+ * containers to <br>, preserving inline formatting such as spans, links, bold
+ * and custom font styles.
+ */
+function normalizeFreeTextHtml(element: HTMLElement): string {
+  const lineContainers = new Set(["DIV", "P"]);
+  const lines: string[] = [];
+  const inline = document.createElement("div");
+
+  const flushInline = () => {
+    if (!inline.childNodes.length) return;
+    const text = normalizeReaderText(inline);
+    lines.push(text || hasReaderMedia(inline) ? inline.innerHTML : "");
+    inline.replaceChildren();
+  };
+
+  Array.from(element.childNodes).forEach(node => {
+    if (node instanceof HTMLElement && lineContainers.has(node.tagName)) {
+      flushInline();
+      const text = normalizeReaderText(node);
+      lines.push(text || hasReaderMedia(node) ? normalizeFreeTextHtml(node) : "");
+      return;
+    }
+    inline.append(node.cloneNode(true));
+  });
+
+  flushInline();
+  return lines.length ? lines.join("<br>") : element.innerHTML;
+}
+
+function removeEmptyReaderParagraphs(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("p").forEach(paragraph => {
+    if (normalizeReaderText(paragraph) || hasReaderMedia(paragraph)) return;
+    paragraph.remove();
+  });
+}
+
 /**
  * Older editor saves can contain the same visible section twice: once as
  * freely-positioned canvas blocks and once as ordinary document-flow nodes.
@@ -88,7 +133,7 @@ export function toReaderArticleHtml(value: string) {
       const text = node.querySelector<HTMLElement>(".free-text");
       if (!text || !text.textContent?.trim()) return;
       const paragraph = document.createElement("p");
-      paragraph.innerHTML = text.innerHTML;
+      paragraph.innerHTML = normalizeFreeTextHtml(text);
       clearLayout(paragraph);
       output.append(paragraph);
       return;
@@ -99,6 +144,7 @@ export function toReaderArticleHtml(value: string) {
     output.append(copy);
   });
 
+  removeEmptyReaderParagraphs(output);
   removeAdjacentDuplicateRuns(output);
   return sanitizeArticleHtml(output.innerHTML);
 }
