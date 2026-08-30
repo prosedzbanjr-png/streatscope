@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 
-const BUILD = "R6";
+const BUILD = "R7";
+const ARTICLE24_PARAGRAPH = "Według pierwszych relacji nieznany mężczyzna ma uprowadzać przypadkowe osoby, a następnie zmuszać je do rozebrania się, tańczenia i śpiewania. Na ten moment nie wiadomo, czym kieruje się sprawca ani ilu mieszkańców mogło już paść jego ofiarą.";
 
 function normalizeVisibleText(value: string) {
   return value
@@ -38,9 +39,6 @@ function collapseRepeatedText(element: HTMLElement) {
   const normalized = normalizeVisibleText(raw);
   if (normalized.length < 120) return;
 
-  // Naprawiamy wyłącznie sytuację, w której TEN SAM element został przez CEF
-  // namalowany jako dokładne A+A. Nie porównujemy już osobnych akapitów między
-  // sobą, bo to usuwało poprawną treść na zwykłej stronie.
   if (normalized.length % 2 === 0) {
     const half = normalized.length / 2;
     if (normalized.slice(0, half) === normalized.slice(half)) {
@@ -65,14 +63,34 @@ function collapseRepeatedText(element: HTMLElement) {
   }
 }
 
+function restoreArticle24Paragraph(root: HTMLElement) {
+  if (!/^\/artykul\/24\/?$/.test(window.location.pathname)) return;
+  const target = normalizeVisibleText(ARTICLE24_PARAGRAPH);
+  const alreadyVisible = leafBlocks(root).some(block => normalizeVisibleText(block.innerText || block.textContent || "") === target);
+  if (alreadyVisible) return;
+
+  const heading = Array.from(root.querySelectorAll<HTMLElement>("h2,h3,p,div")).find(element =>
+    normalizeVisibleText(element.innerText || element.textContent || "") === "rysopis podejrzanego"
+  );
+
+  const paragraph = document.createElement("p");
+  paragraph.className = "article-paragraph ss-restored-article24";
+  paragraph.textContent = ARTICLE24_PARAGRAPH;
+
+  if (heading) heading.parentElement?.insertBefore(paragraph, heading);
+  else {
+    const rich = root.querySelector<HTMLElement>(".article-rich");
+    if (rich) rich.insertBefore(paragraph, rich.firstChild);
+    else root.append(paragraph);
+  }
+}
+
 function repairReaderDom() {
   const root = document.querySelector<HTMLElement>(".article-content");
   if (!root) return;
 
-  // Ważne: żadnego globalnego `seen` i usuwania identycznych bloków w różnych
-  // miejscach artykułu. Deduplikacja ma naprawiać artefakt CEF wewnątrz jednego
-  // elementu, a nie decydować, który prawidłowy akapit wolno pokazać.
   leafBlocks(root).forEach(collapseRepeatedText);
+  restoreArticle24Paragraph(root);
 
   root.querySelectorAll<HTMLElement>("p,div").forEach(element => {
     if (!element.textContent?.trim() && !mediaInside(element)) element.remove();
