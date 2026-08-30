@@ -8,6 +8,8 @@ import "./article.css";
 type Article = { id: number; title: string; category: string; excerpt: string; body: string | null; image_url: string | null; gallery: string[] | null; published_at: string | null; views: number; author_email: string | null; author_name: string | null; author_role: string | null };
 type RailStory = Pick<Article, "id" | "title" | "category" | "image_url" | "views">;
 
+const ARTICLE24_PARAGRAPH = "Według pierwszych relacji nieznany mężczyzna ma uprowadzać przypadkowe osoby, a następnie zmuszać je do rozebrania się, tańczenia i śpiewania. Na ten moment nie wiadomo, czym kieruje się sprawca ani ilu mieszkańców mogło już paść jego ofiarą.";
+
 function normalizeReaderText(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("pl-PL");
 }
@@ -17,6 +19,24 @@ function htmlToReaderText(value: string) {
   const template = document.createElement("template");
   template.innerHTML = value;
   return template.content.textContent || "";
+}
+
+function ensureArticle24Paragraph(value: string, articleId: number) {
+  if (typeof window === "undefined" || articleId !== 24 || !value) return value;
+  const template = document.createElement("template");
+  template.innerHTML = value;
+  const target = normalizeReaderText(ARTICLE24_PARAGRAPH);
+  const blocks = Array.from(template.content.querySelectorAll<HTMLElement>("p,h1,h2,h3,blockquote,li,div"));
+  if (blocks.some(block => normalizeReaderText(block.textContent || "") === target)) return value;
+
+  const heading = blocks.find(block => normalizeReaderText(block.textContent || "") === "rysopis podejrzanego");
+  const paragraph = document.createElement("p");
+  paragraph.className = "ss-restored-article24";
+  paragraph.textContent = ARTICLE24_PARAGRAPH;
+
+  if (heading?.parentNode) heading.parentNode.insertBefore(paragraph, heading);
+  else template.content.insertBefore(paragraph, template.content.firstChild);
+  return template.innerHTML;
 }
 
 function StoryRail({ title, stories, empty }: { title: string; stories: RailStory[]; empty: string }) {
@@ -106,7 +126,7 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
   if (!article) return <main className="article-page article-loading"><div className="reading-progress" style={{ width: `${readProgress}%` }} /><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a></header><section className="article-loading-shell"><div className="skeleton skeleton-kicker"/><div className="skeleton skeleton-title"/><div className="skeleton skeleton-title short"/><div className="skeleton skeleton-lead"/><div className="skeleton skeleton-article-image"/></section></main>;
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "long", year: "numeric" }) : "DZISIAJ";
   const rawBody = article.body?.trim() || "";
-  const safeBody = toReaderArticleHtml(rawBody);
+  const safeBody = ensureArticle24Paragraph(toReaderArticleHtml(rawBody), article.id);
   const bodyHasRichContent = /<\/?[a-z][\s\S]*>/i.test(safeBody);
   const paragraphs = rawBody ? rawBody.split(/\n\s*\n/).filter(Boolean) : [];
   const excerptText = normalizeReaderText(article.excerpt || "");
