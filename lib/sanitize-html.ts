@@ -40,9 +40,7 @@ function hasReaderMedia(element: HTMLElement) {
 
 /*
  * Free-text fields are normalized only for layout. We deliberately do NOT
- * deduplicate their text here. The editor is the source of truth: if a
- * paragraph exists there, the reader must render it instead of guessing that
- * it is an accidental copy.
+ * globally deduplicate their text here. The editor remains the source of truth.
  */
 function normalizeFreeTextHtml(element: HTMLElement): string {
   const working = element.cloneNode(true) as HTMLElement;
@@ -124,6 +122,57 @@ function isStoredOverlappingDuplicate(node: HTMLElement, previous: HTMLElement) 
   return overlapArea / smallerArea >= 0.8;
 }
 
+function hasMultipleLogicalLines(element: HTMLElement) {
+  const breaks = element.querySelectorAll("br").length;
+  const blocks = element.querySelectorAll(":scope > p,:scope > div,:scope > h2,:scope > h3,:scope > blockquote,:scope > li").length;
+  return breaks >= 2 || blocks >= 3;
+}
+
+/*
+ * The LB-Phone symptom we can actually prove is an IMMEDIATE repeated run:
+ * A+B+C followed directly by A+B+C, or one multi-line free-text field followed
+ * directly by an identical copy. We remove only that shape.
+ *
+ * Important: a single normal paragraph is NEVER removed merely because the next
+ * paragraph has the same text. That was the old bug that ate valid content.
+ */
+function removeImmediateRepeatedReaderRuns(root: HTMLElement) {
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    const nodes = Array.from(root.children) as HTMLElement[];
+    const fingerprints = nodes.map(node => hasReaderMedia(node) ? "" : normalizeReaderText(node));
+
+    duplicateSearch:
+    for (let start = 0; start < nodes.length; start += 1) {
+      const maxLength = Math.min(8, Math.floor((nodes.length - start) / 2));
+
+      for (let length = maxLength; length >= 1; length -= 1) {
+        const first = fingerprints.slice(start, start + length);
+        const second = fingerprints.slice(start + length, start + length * 2);
+        if (!first.length || first.some(value => !value)) continue;
+        if (!first.every((value, index) => value === second[index])) continue;
+
+        const combinedLength = first.join(" ").length;
+
+        if (length === 1) {
+          const firstNode = nodes[start];
+          const secondNode = nodes[start + 1];
+          if (combinedLength < 220) continue;
+          if (!hasMultipleLogicalLines(firstNode) || !hasMultipleLogicalLines(secondNode)) continue;
+        } else if (combinedLength < 220) {
+          continue;
+        }
+
+        nodes.slice(start + length, start + length * 2).forEach(node => node.remove());
+        changed = true;
+        break duplicateSearch;
+      }
+    }
+  }
+}
+
 export function toReaderArticleHtml(value: string) {
   if (typeof window === "undefined") return value;
   const template = document.createElement("template");
@@ -157,11 +206,6 @@ export function toReaderArticleHtml(value: string) {
 
   ordered.forEach(({ node }) => {
     if (node.classList.contains("text-block")) {
-      /*
-       * Legacy drafts may contain two identical draggable fields literally on
-       * top of each other. Remove only that measurable case. Never remove a
-       * paragraph merely because the same text appears somewhere else.
-       */
       if (keptTextBlocks.some(previous => isStoredOverlappingDuplicate(node, previous))) return;
       keptTextBlocks.push(node);
 
@@ -192,5 +236,6 @@ export function toReaderArticleHtml(value: string) {
   });
 
   removeEmptyReaderParagraphs(output);
+  removeImmediateRepeatedReaderRuns(output);
   return sanitizeArticleHtml(output.innerHTML);
 }
