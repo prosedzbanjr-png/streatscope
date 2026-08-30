@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const BUILD = "R5";
+const BUILD = "R6";
 
 function normalizeVisibleText(value: string) {
   return value
@@ -38,7 +38,9 @@ function collapseRepeatedText(element: HTMLElement) {
   const normalized = normalizeVisibleText(raw);
   if (normalized.length < 120) return;
 
-  // Exact A+A repetition after whitespace/zero-width normalization.
+  // Naprawiamy wyłącznie sytuację, w której TEN SAM element został przez CEF
+  // namalowany jako dokładne A+A. Nie porównujemy już osobnych akapitów między
+  // sobą, bo to usuwało poprawną treść na zwykłej stronie.
   if (normalized.length % 2 === 0) {
     const half = normalized.length / 2;
     if (normalized.slice(0, half) === normalized.slice(half)) {
@@ -49,8 +51,6 @@ function collapseRepeatedText(element: HTMLElement) {
     }
   }
 
-  // CEF may insert a slightly different separator between both copies. Find
-  // the second occurrence by a substantial prefix instead of trusting markup.
   const prefixLength = Math.min(90, Math.max(60, Math.floor(normalized.length / 4)));
   const prefix = normalized.slice(0, prefixLength);
   const repeatAt = normalized.indexOf(prefix, prefixLength);
@@ -58,8 +58,9 @@ function collapseRepeatedText(element: HTMLElement) {
     const first = normalizeVisibleText(normalized.slice(0, repeatAt));
     const second = normalizeVisibleText(normalized.slice(repeatAt));
     if (first === second) {
-      const visiblePrefix = raw.slice(0, Math.max(0, Math.floor(raw.length / 2))).trim();
-      element.textContent = visiblePrefix;
+      const words = raw.split(/\s+/).filter(Boolean);
+      const wordHalf = Math.floor(words.length / 2);
+      if (wordHalf >= 10) element.textContent = words.slice(0, wordHalf).join(" ");
     }
   }
 }
@@ -68,24 +69,10 @@ function repairReaderDom() {
   const root = document.querySelector<HTMLElement>(".article-content");
   if (!root) return;
 
-  const blocks = leafBlocks(root);
-  blocks.forEach(collapseRepeatedText);
-
-  // Compare the final text that CEF actually paints. This intentionally works
-  // outside .article-rich too, so a malformed block moved by the WebView is
-  // still caught.
-  const seen = new Map<string, HTMLElement>();
-  leafBlocks(root).forEach(block => {
-    if (!block.isConnected || mediaInside(block)) return;
-    const fingerprint = normalizeVisibleText(block.innerText || block.textContent || "");
-    if (fingerprint.length < 100) return;
-    const previous = seen.get(fingerprint);
-    if (previous?.isConnected) {
-      block.remove();
-      return;
-    }
-    seen.set(fingerprint, block);
-  });
+  // Ważne: żadnego globalnego `seen` i usuwania identycznych bloków w różnych
+  // miejscach artykułu. Deduplikacja ma naprawiać artefakt CEF wewnątrz jednego
+  // elementu, a nie decydować, który prawidłowy akapit wolno pokazać.
+  leafBlocks(root).forEach(collapseRepeatedText);
 
   root.querySelectorAll<HTMLElement>("p,div").forEach(element => {
     if (!element.textContent?.trim() && !mediaInside(element)) element.remove();
@@ -96,7 +83,6 @@ function repairReaderDom() {
 
 export default function ReaderDomRepair() {
   useEffect(() => {
-    // Re-run after hydration and after the async view-counter state update.
     const delays = [0, 50, 150, 400, 900, 1600, 3000, 5000];
     const timers = delays.map(delay => window.setTimeout(repairReaderDom, delay));
     return () => timers.forEach(timer => window.clearTimeout(timer));
