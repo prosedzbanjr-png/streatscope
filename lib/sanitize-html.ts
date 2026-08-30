@@ -24,6 +24,53 @@ function hasReaderMedia(element: HTMLElement) {
   return Boolean(element.querySelector("img,video,iframe,svg,hr"));
 }
 
+function readerFingerprintFromHtml(value: string) {
+  const holder = document.createElement("div");
+  holder.innerHTML = value;
+  return normalizeReaderText(holder);
+}
+
+function collapseExactDuplicatePlainText(value: string) {
+  if (/<[a-z][\s\S]*>/i.test(value)) return value;
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 12 || words.length % 2 !== 0) return value;
+  const half = words.length / 2;
+  const first = words.slice(0, half);
+  const second = words.slice(half);
+  const same = first.every((word, index) => word.toLocaleLowerCase("pl-PL") === second[index]?.toLocaleLowerCase("pl-PL"));
+  if (!same || first.join(" ").length < 80) return value;
+  return first.join(" ");
+}
+
+function removeAdjacentDuplicateHtmlRuns(lines: string[]) {
+  const output = [...lines];
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    const fingerprints = output.map(readerFingerprintFromHtml);
+
+    duplicateSearch:
+    for (let start = 0; start < output.length; start += 1) {
+      const maxLength = Math.floor((output.length - start) / 2);
+      for (let length = maxLength; length >= 1; length -= 1) {
+        const first = fingerprints.slice(start, start + length);
+        const second = fingerprints.slice(start + length, start + length * 2);
+        if (!first.length || first.some(value => !value)) continue;
+        if (!first.every((value, index) => value === second[index])) continue;
+        const combinedLength = first.join(" ").length;
+        if (length === 1 && combinedLength < 80) continue;
+        if (length > 1 && combinedLength < 60) continue;
+        output.splice(start + length, length);
+        changed = true;
+        break duplicateSearch;
+      }
+    }
+  }
+
+  return output;
+}
+
 /**
  * contentEditable is inconsistent between Chromium/CEF builds. A single Enter
  * may be saved as <div>next line</div>, while another build saves <br>. Wrapping
@@ -55,13 +102,25 @@ function normalizeFreeTextHtml(element: HTMLElement): string {
   });
 
   flushInline();
-  return lines.length ? lines.join("<br>") : element.innerHTML;
+  const deduped = removeAdjacentDuplicateHtmlRuns(lines).map(collapseExactDuplicatePlainText);
+  return deduped.length ? deduped.join("<br>") : collapseExactDuplicatePlainText(element.innerHTML);
 }
 
 function removeEmptyReaderParagraphs(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>("p").forEach(paragraph => {
     if (normalizeReaderText(paragraph) || hasReaderMedia(paragraph)) return;
     paragraph.remove();
+  });
+}
+
+function removeInternalParagraphDuplicates(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("p").forEach(paragraph => {
+    const childElements = Array.from(paragraph.children).filter(child => child.tagName !== "BR");
+    if (childElements.length > 0) return;
+    const html = paragraph.innerHTML;
+    const lines = html.split(/<br\s*\/?>/i);
+    const normalized = removeAdjacentDuplicateHtmlRuns(lines).map(collapseExactDuplicatePlainText).join("<br>");
+    if (normalized !== html) paragraph.innerHTML = normalized;
   });
 }
 
@@ -145,6 +204,7 @@ export function toReaderArticleHtml(value: string) {
   });
 
   removeEmptyReaderParagraphs(output);
+  removeInternalParagraphDuplicates(output);
   removeAdjacentDuplicateRuns(output);
   return sanitizeArticleHtml(output.innerHTML);
 }
