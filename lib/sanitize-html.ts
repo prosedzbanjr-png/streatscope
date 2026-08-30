@@ -111,20 +111,9 @@ function collapseRepeatedTextInsideElement(element: HTMLElement) {
   removeDuplicateChildRuns(element);
   const repeated = repeatedHalfText(element.textContent || "");
   if (!repeated) return;
-
-  // Last-resort repair for broken contentEditable markup. If a substantial
-  // paragraph is literally the same text twice, preserving the accidental
-  // second copy is worse than dropping inline formatting from that paragraph.
   element.textContent = repeated;
 }
 
-/**
- * contentEditable is inconsistent between Chromium/CEF builds. A single Enter
- * may be saved as <div>next line</div>, while another build saves <br>. Wrapping
- * that raw markup in a reader <p> creates nested flow blocks and LB Phone can
- * render one paragraph break as two. Flatten editor-generated line containers
- * and remove repeated child runs before the final paragraph is created.
- */
 function normalizeFreeTextHtml(element: HTMLElement): string {
   const working = element.cloneNode(true) as HTMLElement;
   removeDuplicateChildRuns(working);
@@ -181,7 +170,7 @@ function removeRepeatedSubstantialBlocks(root: HTMLElement) {
   const seen = new Map<string, HTMLElement>();
   Array.from(root.children).forEach(node => {
     const element = node as HTMLElement;
-    if (!["P", "H2", "H3", "BLOCKQUOTE"].includes(element.tagName)) return;
+    if (!["P", "H2", "H3", "BLOCKQUOTE", "DIV"].includes(element.tagName)) return;
     if (hasReaderMedia(element)) return;
     const fingerprint = normalizeReaderText(element);
     if (fingerprint.length < 80) return;
@@ -193,12 +182,6 @@ function removeRepeatedSubstantialBlocks(root: HTMLElement) {
   });
 }
 
-/**
- * Older editor saves can contain the same visible section twice: once as
- * freely-positioned canvas blocks and once as ordinary document-flow nodes.
- * Desktop styling can make those copies overlap, while LB Phone lays them out
- * one after another. Remove substantial repeated runs before publishing.
- */
 function removeAdjacentDuplicateRuns(root: HTMLElement) {
   let removedSomething = true;
 
@@ -229,11 +212,12 @@ function removeAdjacentDuplicateRuns(root: HTMLElement) {
   }
 }
 
-/**
- * The editor canvas stores drag coordinates to make writing convenient. Those
- * coordinates are not an article layout system and must never be applied to
- * a published story. Convert the canvas markup into a stable reader document.
- */
+function containsBlockMarkup(html: string) {
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  return Boolean(holder.querySelector("h1,h2,h3,h4,h5,h6,p,div,blockquote,ul,ol,pre,figure,table"));
+}
+
 export function toReaderArticleHtml(value: string) {
   if (typeof window === "undefined") return value;
   const template = document.createElement("template");
@@ -254,17 +238,30 @@ export function toReaderArticleHtml(value: string) {
     const bY = Number.isFinite(b.y) ? b.y : Number.MAX_SAFE_INTEGER;
     return aY === bY ? a.index - b.index : aY - bY;
   });
+
   const output = document.createElement("div");
   ordered.forEach(({ node }) => {
     if (node.classList.contains("text-block")) {
       const text = node.querySelector<HTMLElement>(".free-text");
       if (!text || !text.textContent?.trim()) return;
-      const paragraph = document.createElement("p");
-      paragraph.innerHTML = normalizeFreeTextHtml(text);
-      clearLayout(paragraph);
-      output.append(paragraph);
+
+      const normalizedHtml = normalizeFreeTextHtml(text);
+      if (containsBlockMarkup(normalizedHtml)) {
+        const block = document.createElement("div");
+        block.className = "reader-text-block";
+        block.innerHTML = normalizedHtml;
+        clearLayout(block);
+        block.querySelectorAll<HTMLElement>("*").forEach(clearLayout);
+        output.append(block);
+      } else {
+        const paragraph = document.createElement("p");
+        paragraph.innerHTML = normalizedHtml;
+        clearLayout(paragraph);
+        output.append(paragraph);
+      }
       return;
     }
+
     const copy = node.cloneNode(true) as HTMLElement;
     clearLayout(copy);
     copy.querySelectorAll<HTMLElement>("*").forEach(clearLayout);
