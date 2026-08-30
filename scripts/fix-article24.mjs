@@ -79,7 +79,36 @@ function dedupe(html) {
   for (const block of duplicates.sort((a, b) => b.start - a.start)) {
     output = output.slice(0, block.start) + output.slice(block.end);
   }
-  return { output, removed: duplicates.length, candidates: candidates.map(item => ({ kind: item.kind, fingerprint: item.fingerprint.slice(0, 120) })) };
+  return { output, removed: duplicates.length };
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const TARGET = 'Według pierwszych relacji nieznany mężczyzna ma uprowadzać przypadkowe osoby, a następnie zmuszać je do rozebrania się, tańczenia i śpiewania. Na ten moment nie wiadomo, czym kieruje się sprawca ani ilu mieszkańców mogło już paść jego ofiarą.';
+
+function removeLaterTargetCopies(html) {
+  const tokens = TARGET.split(/\s+/).filter(Boolean).map(escapeRegex);
+  const inlineGap = '(?:\\s|&nbsp;|&#160;|<(?:\\/?(?:span|strong|b|i|em|u|s|a)\\b[^>]*|br\\s*\\/?)>)*';
+  const regex = new RegExp(tokens.join(inlineGap), 'giu');
+  const matches = [...html.matchAll(regex)];
+  if (matches.length <= 1) return { output: html, removed: 0, found: matches.length };
+
+  let output = html;
+  for (const match of matches.slice(1).sort((a, b) => (b.index ?? 0) - (a.index ?? 0))) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    output = output.slice(0, start) + output.slice(end);
+  }
+
+  // Remove empty wrappers left by surgical text removal.
+  output = output
+    .replace(/<p\b[^>]*>\s*(?:<br\s*\/?>\s*)?<\/p\s*>/gi, '')
+    .replace(/<div\b([^>]*)class=(['"])([^'"]*\bfree-text\b[^'"]*)\2([^>]*)>\s*(?:<br\s*\/?>\s*)?<\/div\s*>/gi, '')
+    .replace(/<div\b([^>]*)class=(['"])([^'"]*\btext-block\b[^'"]*)\2([^>]*)>\s*<\/div\s*>/gi, '');
+
+  return { output, removed: matches.length - 1, found: matches.length };
 }
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -91,11 +120,14 @@ const { data: article, error } = await client.from('articles').select('id,body')
 if (error || !article) throw new Error(error?.message || 'Article 24 not found');
 
 const before = String(article.body || '');
-const { output: after, removed, candidates } = dedupe(before);
-if (removed > 0) {
+const generic = dedupe(before);
+const surgical = removeLaterTargetCopies(generic.output);
+const after = surgical.output;
+const changed = after !== before;
+
+if (changed) {
   const { error: updateError } = await client.from('articles').update({ body: after }).eq('id', 24);
   if (updateError) throw new Error(updateError.message);
 }
 
-console.log(`[article24-cleanup] removed=${removed} before=${before.length} after=${after.length}`);
-console.log('[article24-cleanup] candidates=' + JSON.stringify(candidates));
+console.log(`[article24-cleanup] genericRemoved=${generic.removed} targetFound=${surgical.found} targetRemoved=${surgical.removed} before=${before.length} after=${after.length} changed=${changed}`);
