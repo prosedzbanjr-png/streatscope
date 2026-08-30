@@ -26,27 +26,60 @@ function matchingDivEnd(html, start) {
   return -1;
 }
 
-function dedupe(html) {
+function findTextBlocks(html) {
   const opener = /<div\b[^>]*class=(['"])[^'"]*\btext-block\b[^'"]*\1[^>]*>/gi;
-  const seen = new Set();
-  const duplicates = [];
+  const blocks = [];
   let match;
   while ((match = opener.exec(html))) {
     const start = match.index;
     const end = matchingDivEnd(html, start);
     if (end <= start) continue;
-    const fingerprint = normalize(html.slice(start, end));
-    if (fingerprint.length >= 80) {
-      if (seen.has(fingerprint)) duplicates.push({ start, end });
-      else seen.add(fingerprint);
-    }
+    blocks.push({ start, end, fingerprint: normalize(html.slice(start, end)), kind: 'text-block' });
     opener.lastIndex = end;
   }
+  return blocks;
+}
+
+function inside(index, ranges) {
+  return ranges.some(range => index > range.start && index < range.end);
+}
+
+function findLegacyParagraphs(html, textBlocks) {
+  const paragraphs = [];
+  const regex = /<p\b[^>]*>[\s\S]*?<\/p\s*>/gi;
+  let match;
+  while ((match = regex.exec(html))) {
+    if (inside(match.index, textBlocks)) continue;
+    const fingerprint = normalize(match[0]);
+    if (fingerprint.length < 80) continue;
+    paragraphs.push({ start: match.index, end: match.index + match[0].length, fingerprint, kind: 'paragraph' });
+  }
+  return paragraphs;
+}
+
+function dedupe(html) {
+  const textBlocks = findTextBlocks(html);
+  const candidates = [...textBlocks, ...findLegacyParagraphs(html, textBlocks)]
+    .filter(block => block.fingerprint.length >= 80)
+    .sort((a, b) => a.start - b.start || b.end - a.end);
+
+  const seen = new Map();
+  const duplicates = [];
+  for (const block of candidates) {
+    const previous = seen.get(block.fingerprint);
+    if (!previous) {
+      seen.set(block.fingerprint, block);
+      continue;
+    }
+    if (block.start >= previous.start && block.end <= previous.end) continue;
+    duplicates.push(block);
+  }
+
   let output = html;
   for (const block of duplicates.sort((a, b) => b.start - a.start)) {
     output = output.slice(0, block.start) + output.slice(block.end);
   }
-  return { output, removed: duplicates.length };
+  return { output, removed: duplicates.length, candidates: candidates.map(item => ({ kind: item.kind, fingerprint: item.fingerprint.slice(0, 120) })) };
 }
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -58,10 +91,11 @@ const { data: article, error } = await client.from('articles').select('id,body')
 if (error || !article) throw new Error(error?.message || 'Article 24 not found');
 
 const before = String(article.body || '');
-const { output: after, removed } = dedupe(before);
+const { output: after, removed, candidates } = dedupe(before);
 if (removed > 0) {
   const { error: updateError } = await client.from('articles').update({ body: after }).eq('id', 24);
   if (updateError) throw new Error(updateError.message);
 }
 
 console.log(`[article24-cleanup] removed=${removed} before=${before.length} after=${after.length}`);
+console.log('[article24-cleanup] candidates=' + JSON.stringify(candidates));
