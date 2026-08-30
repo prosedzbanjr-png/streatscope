@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./pages.css";
 import { ThemeToggle } from "./theme-toggle";
+import { ArticleCacheBuster } from "./article-cache-buster";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://streetscope.vercel.app"),
@@ -44,7 +45,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('streetscope-theme');if(t!=='dark'&&t!=='light')t='light';document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){document.documentElement.dataset.theme='light';}})();` }} />
       </head>
-      <body>{children}<ThemeToggle /></body>
+      <body>{children}<ThemeToggle /><ArticleCacheBuster /></body>
     </html>
   );
 }
