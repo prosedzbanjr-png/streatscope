@@ -33,14 +33,63 @@ function turnFreeTextIntoInputs(root: HTMLElement) {
   });
 }
 
+function normalizeEditorBlockText(block: HTMLElement) {
+  const field = block.querySelector<HTMLElement>(".free-text");
+  return (field?.textContent || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase("pl-PL");
+}
+
+function findOverlappingDuplicateTextBlocks(children: HTMLElement[]) {
+  const duplicateIndexes = new Set<number>();
+  const blocks = children.map((element, index) => {
+    if (!element.classList.contains("text-block")) return null;
+    const text = normalizeEditorBlockText(element);
+    if (text.length < 40) return null;
+    const rect = element.getBoundingClientRect();
+    return { index, text, rect };
+  }).filter((item): item is { index: number; text: string; rect: DOMRect } => Boolean(item));
+
+  for (let i = 0; i < blocks.length; i += 1) {
+    if (duplicateIndexes.has(blocks[i].index)) continue;
+    for (let j = i + 1; j < blocks.length; j += 1) {
+      const first = blocks[i];
+      const second = blocks[j];
+      if (duplicateIndexes.has(second.index) || first.text !== second.text) continue;
+
+      const overlapWidth = Math.max(0, Math.min(first.rect.right, second.rect.right) - Math.max(first.rect.left, second.rect.left));
+      const overlapHeight = Math.max(0, Math.min(first.rect.bottom, second.rect.bottom) - Math.max(first.rect.top, second.rect.top));
+      const overlapArea = overlapWidth * overlapHeight;
+      const firstArea = Math.max(1, first.rect.width * first.rect.height);
+      const secondArea = Math.max(1, second.rect.width * second.rect.height);
+      const overlapRatio = overlapArea / Math.min(firstArea, secondArea);
+      const nearlySamePosition = Math.abs(first.rect.left - second.rect.left) <= 12 && Math.abs(first.rect.top - second.rect.top) <= 12;
+
+      if (overlapRatio >= 0.8 || nearlySamePosition) duplicateIndexes.add(second.index);
+    }
+  }
+
+  return duplicateIndexes;
+}
+
 function serializeCanvas(root: HTMLElement) {
   const copy = root.cloneNode(true) as HTMLElement;
   const rootBox = root.getBoundingClientRect();
   const sourceChildren = Array.from(root.children).filter(node => !(node as HTMLElement).dataset.pageSheet) as HTMLElement[];
   const copyChildren = Array.from(copy.children).filter(node => !(node as HTMLElement).dataset.pageSheet) as HTMLElement[];
+
+  // Old drafts can contain two identical free-text blocks sitting exactly on
+  // top of each other. They look like one block in the editor, but the reader
+  // lays them out one after another. Strip only long, identical blocks that
+  // substantially overlap before anything is persisted to Supabase.
+  const duplicateTextBlocks = findOverlappingDuplicateTextBlocks(sourceChildren);
+  duplicateTextBlocks.forEach(index => copyChildren[index]?.remove());
+
   sourceChildren.forEach((source, index) => {
     const target = copyChildren[index] as HTMLElement | undefined;
-    if (!target) return;
+    if (!target || duplicateTextBlocks.has(index)) return;
     // Normal paragraphs are document flow. Saving their pixel coordinates turns
     // a long article into a pile of overlapping absolutely positioned lines.
     // Only deliberately movable editor elements need coordinates.
