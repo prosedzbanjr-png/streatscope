@@ -1,4 +1,4 @@
-// Deploy marker: repeated-paragraph fix
+// Deploy marker: repeated-paragraph fix v2
 export function sanitizeArticleHtml(value: string) {
   if (typeof window === "undefined") return value;
   const template = document.createElement("template");
@@ -45,12 +45,6 @@ function readerLineFingerprint(value: string) {
   return normalizeReaderText(holder);
 }
 
-/*
- * Some legacy free-text fields contain a whole paragraph sequence twice inside
- * ONE draggable field: A+B+C+A+B+C. Root-level dedupe cannot see that because
- * the reader receives it as a single node. Remove only immediate repeated runs
- * of at least TWO logical lines. A single repeated paragraph is left alone.
- */
 function removeImmediateRepeatedFreeTextLines(lines: string[]) {
   const output = [...lines];
   let changed = true;
@@ -61,13 +55,14 @@ function removeImmediateRepeatedFreeTextLines(lines: string[]) {
 
     duplicateSearch:
     for (let start = 0; start < output.length; start += 1) {
-      const maxLength = Math.min(8, Math.floor((output.length - start) / 2));
+      const maxLength = Math.min(10, Math.floor((output.length - start) / 2));
       for (let length = maxLength; length >= 2; length -= 1) {
         const first = fingerprints.slice(start, start + length);
         const second = fingerprints.slice(start + length, start + length * 2);
-        if (!first.length || first.some(value => !value)) continue;
+        const nonEmpty = first.filter(Boolean);
+        if (!first.length || nonEmpty.length < 2) continue;
         if (!first.every((value, index) => value === second[index])) continue;
-        if (first.join(" ").length < 160) continue;
+        if (nonEmpty.join(" ").length < 160) continue;
 
         output.splice(start + length, length);
         changed = true;
@@ -79,10 +74,6 @@ function removeImmediateRepeatedFreeTextLines(lines: string[]) {
   return output;
 }
 
-/*
- * Free-text fields are normalized only for layout. We deliberately do NOT
- * globally deduplicate their text here. The editor remains the source of truth.
- */
 function normalizeFreeTextHtml(element: HTMLElement): string {
   const working = element.cloneNode(true) as HTMLElement;
   working.querySelectorAll(".text-handle,.media-handle,[data-page-sheet]").forEach(node => node.remove());
@@ -170,14 +161,6 @@ function hasMultipleLogicalLines(element: HTMLElement) {
   return breaks >= 2 || blocks >= 3;
 }
 
-/*
- * The LB-Phone symptom we can actually prove is an IMMEDIATE repeated run:
- * A+B+C followed directly by A+B+C, or one multi-line free-text field followed
- * directly by an identical copy. We remove only that shape.
- *
- * Important: a single normal paragraph is NEVER removed merely because the next
- * paragraph has the same text. That was the old bug that ate valid content.
- */
 function removeImmediateRepeatedReaderRuns(root: HTMLElement) {
   let changed = true;
 
@@ -188,22 +171,23 @@ function removeImmediateRepeatedReaderRuns(root: HTMLElement) {
 
     duplicateSearch:
     for (let start = 0; start < nodes.length; start += 1) {
-      const maxLength = Math.min(8, Math.floor((nodes.length - start) / 2));
+      const maxLength = Math.min(10, Math.floor((nodes.length - start) / 2));
 
       for (let length = maxLength; length >= 1; length -= 1) {
         const first = fingerprints.slice(start, start + length);
         const second = fingerprints.slice(start + length, start + length * 2);
-        if (!first.length || first.some(value => !value)) continue;
+        const nonEmpty = first.filter(Boolean);
+        if (!first.length || !nonEmpty.length) continue;
         if (!first.every((value, index) => value === second[index])) continue;
 
-        const combinedLength = first.join(" ").length;
+        const combinedLength = nonEmpty.join(" ").length;
 
         if (length === 1) {
           const firstNode = nodes[start];
           const secondNode = nodes[start + 1];
           if (combinedLength < 220) continue;
           if (!hasMultipleLogicalLines(firstNode) || !hasMultipleLogicalLines(secondNode)) continue;
-        } else if (combinedLength < 220) {
+        } else if (nonEmpty.length < 2 || combinedLength < 220) {
           continue;
         }
 
