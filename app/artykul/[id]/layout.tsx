@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ReaderDomRepair from "./reader-dom-repair";
 
 type ArticleMeta = { title: string; excerpt: string; image_url: string | null; category: string; social_title: string | null; social_description: string | null; social_image: string | null; published_at: string | null; author_name: string | null };
 
@@ -34,4 +35,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   };
 }
 
-export default function ArticleLayout({ children }: Readonly<{ children: React.ReactNode }>) { return children; }
+export default function ArticleLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <>{children}<ReaderDomRepair /></>;
+}
