@@ -5,8 +5,16 @@ export function sanitizeArticleHtml(value: string) {
   template.content.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach(node => node.remove());
   template.content.querySelectorAll("*").forEach(element => {
     [...element.attributes].forEach(attribute => {
-      const name = attribute.name.toLowerCase(); const value = attribute.value.trim().toLowerCase();
-      if (name.startsWith("on") || name === "srcdoc" || (name === "href" && value.startsWith("javascript:")) || (name === "src" && value.startsWith("javascript:"))) element.removeAttribute(attribute.name);
+      const name = attribute.name.toLowerCase();
+      const attributeValue = attribute.value.trim().toLowerCase();
+      if (
+        name.startsWith("on") ||
+        name === "srcdoc" ||
+        (name === "href" && attributeValue.startsWith("javascript:")) ||
+        (name === "src" && attributeValue.startsWith("javascript:"))
+      ) {
+        element.removeAttribute(attribute.name);
+      }
     });
   });
   return template.innerHTML;
@@ -30,93 +38,16 @@ function hasReaderMedia(element: HTMLElement) {
   return Boolean(element.querySelector("img,video,iframe,svg,hr"));
 }
 
-function readerFingerprintFromHtml(value: string) {
-  const holder = document.createElement("div");
-  holder.innerHTML = value;
-  return normalizeReaderText(holder);
-}
-
-function repeatedHalfText(value: string) {
-  const normalized = normalizeComparableText(value);
-  const words = normalized.split(" ").filter(Boolean);
-  if (words.length < 20 || words.length % 2 !== 0) return null;
-  const half = words.length / 2;
-  const first = words.slice(0, half);
-  const second = words.slice(half);
-  if (!first.every((word, index) => word === second[index])) return null;
-  const firstText = first.join(" ");
-  return firstText.length >= 80 ? firstText : null;
-}
-
-function collapseExactDuplicatePlainText(value: string) {
-  if (/<[a-z][\s\S]*>/i.test(value)) return value;
-  return repeatedHalfText(value) || value;
-}
-
-function removeAdjacentDuplicateHtmlRuns(lines: string[]) {
-  const output = [...lines];
-  let changed = true;
-
-  while (changed) {
-    changed = false;
-    const fingerprints = output.map(readerFingerprintFromHtml);
-
-    duplicateSearch:
-    for (let start = 0; start < output.length; start += 1) {
-      const maxLength = Math.floor((output.length - start) / 2);
-      for (let length = maxLength; length >= 1; length -= 1) {
-        const first = fingerprints.slice(start, start + length);
-        const second = fingerprints.slice(start + length, start + length * 2);
-        if (!first.length || first.some(value => !value)) continue;
-        if (!first.every((value, index) => value === second[index])) continue;
-        const combinedLength = first.join(" ").length;
-        if (length === 1 && combinedLength < 80) continue;
-        if (length > 1 && combinedLength < 60) continue;
-        output.splice(start + length, length);
-        changed = true;
-        break duplicateSearch;
-      }
-    }
-  }
-
-  return output;
-}
-
-function removeDuplicateChildRuns(element: HTMLElement) {
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const nodes = Array.from(element.childNodes);
-    const fingerprints = nodes.map(node => normalizeComparableText(node.textContent || ""));
-
-    duplicateSearch:
-    for (let start = 0; start < nodes.length; start += 1) {
-      const maxLength = Math.floor((nodes.length - start) / 2);
-      for (let length = maxLength; length >= 1; length -= 1) {
-        const first = fingerprints.slice(start, start + length);
-        const second = fingerprints.slice(start + length, start + length * 2);
-        if (!first.length || first.some(value => !value)) continue;
-        if (!first.every((value, index) => value === second[index])) continue;
-        if (first.join(" ").length < 80) continue;
-        nodes.slice(start + length, start + length * 2).forEach(node => node.remove());
-        changed = true;
-        break duplicateSearch;
-      }
-    }
-  }
-}
-
-function collapseRepeatedTextInsideElement(element: HTMLElement) {
-  if (hasReaderMedia(element)) return;
-  removeDuplicateChildRuns(element);
-  const repeated = repeatedHalfText(element.textContent || "");
-  if (!repeated) return;
-  element.textContent = repeated;
-}
-
+/*
+ * Free-text fields are normalized only for layout. We deliberately do NOT
+ * deduplicate their text here. The editor is the source of truth: if a
+ * paragraph exists there, the reader must render it instead of guessing that
+ * it is an accidental copy.
+ */
 function normalizeFreeTextHtml(element: HTMLElement): string {
   const working = element.cloneNode(true) as HTMLElement;
-  removeDuplicateChildRuns(working);
+  working.querySelectorAll(".text-handle,.media-handle,[data-page-sheet]").forEach(node => node.remove());
+  working.querySelectorAll<HTMLElement>("[contenteditable]").forEach(node => node.removeAttribute("contenteditable"));
 
   const lineContainers = new Set(["DIV", "P"]);
   const lines: string[] = [];
@@ -140,12 +71,7 @@ function normalizeFreeTextHtml(element: HTMLElement): string {
   });
 
   flushInline();
-  const deduped = removeAdjacentDuplicateHtmlRuns(lines).map(collapseExactDuplicatePlainText);
-  if (deduped.length) return deduped.join("<br>");
-
-  const plainRepeated = repeatedHalfText(working.textContent || "");
-  if (plainRepeated) return plainRepeated;
-  return collapseExactDuplicatePlainText(working.innerHTML);
+  return lines.length ? lines.join("<br>") : working.innerHTML;
 }
 
 function removeEmptyReaderParagraphs(root: HTMLElement) {
@@ -155,67 +81,47 @@ function removeEmptyReaderParagraphs(root: HTMLElement) {
   });
 }
 
-function removeInternalParagraphDuplicates(root: HTMLElement) {
-  root.querySelectorAll<HTMLElement>("p").forEach(paragraph => {
-    collapseRepeatedTextInsideElement(paragraph);
-    const html = paragraph.innerHTML;
-    const lines = html.split(/<br\s*\/?>/i);
-    const normalized = removeAdjacentDuplicateHtmlRuns(lines).map(collapseExactDuplicatePlainText).join("<br>");
-    if (normalized !== html) paragraph.innerHTML = normalized;
-    collapseRepeatedTextInsideElement(paragraph);
-  });
-}
-
-function removeRepeatedSubstantialBlocks(root: HTMLElement) {
-  const seen = new Map<string, HTMLElement>();
-  Array.from(root.children).forEach(node => {
-    const element = node as HTMLElement;
-    if (!["P", "H2", "H3", "BLOCKQUOTE", "DIV"].includes(element.tagName)) return;
-    if (hasReaderMedia(element)) return;
-    const fingerprint = normalizeReaderText(element);
-    if (fingerprint.length < 80) return;
-    if (seen.has(fingerprint)) {
-      element.remove();
-      return;
-    }
-    seen.set(fingerprint, element);
-  });
-}
-
-function removeAdjacentDuplicateRuns(root: HTMLElement) {
-  let removedSomething = true;
-
-  while (removedSomething) {
-    removedSomething = false;
-    const nodes = Array.from(root.children) as HTMLElement[];
-    const fingerprints = nodes.map(normalizeReaderText);
-
-    duplicateSearch:
-    for (let start = 0; start < nodes.length; start += 1) {
-      const maxLength = Math.floor((nodes.length - start) / 2);
-
-      for (let length = maxLength; length >= 1; length -= 1) {
-        const first = fingerprints.slice(start, start + length);
-        const second = fingerprints.slice(start + length, start + length * 2);
-        if (!first.length || first.some(value => !value)) continue;
-        if (!first.every((value, index) => value === second[index])) continue;
-
-        const combinedLength = first.join(" ").length;
-        if (length === 1 && combinedLength < 120) continue;
-        if (length > 1 && combinedLength < 80) continue;
-
-        nodes.slice(start + length, start + length * 2).forEach(node => node.remove());
-        removedSomething = true;
-        break duplicateSearch;
-      }
-    }
-  }
-}
-
 function containsBlockMarkup(html: string) {
   const holder = document.createElement("div");
   holder.innerHTML = html;
   return Boolean(holder.querySelector("h1,h2,h3,h4,h5,h6,p,div,blockquote,ul,ol,pre,figure,table"));
+}
+
+function storedRect(node: HTMLElement) {
+  const x = Number(node.dataset.readerX);
+  const y = Number(node.dataset.readerY);
+  const width = Number(node.dataset.readerWidth);
+  const height = Number(node.dataset.readerHeight);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    x,
+    y,
+    width: Number.isFinite(width) && width > 0 ? width : null,
+    height: Number.isFinite(height) && height > 0 ? height : null,
+  };
+}
+
+function isStoredOverlappingDuplicate(node: HTMLElement, previous: HTMLElement) {
+  if (!node.classList.contains("text-block") || !previous.classList.contains("text-block")) return false;
+
+  const nodeText = node.querySelector<HTMLElement>(".free-text");
+  const previousText = previous.querySelector<HTMLElement>(".free-text");
+  const fingerprint = normalizeComparableText(nodeText?.textContent || "");
+  const previousFingerprint = normalizeComparableText(previousText?.textContent || "");
+  if (fingerprint.length < 40 || fingerprint !== previousFingerprint) return false;
+
+  const first = storedRect(node);
+  const second = storedRect(previous);
+  if (!first || !second) return false;
+
+  if (Math.abs(first.x - second.x) <= 12 && Math.abs(first.y - second.y) <= 12) return true;
+  if (first.width === null || first.height === null || second.width === null || second.height === null) return false;
+
+  const overlapWidth = Math.max(0, Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x));
+  const overlapHeight = Math.max(0, Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y));
+  const overlapArea = overlapWidth * overlapHeight;
+  const smallerArea = Math.max(1, Math.min(first.width * first.height, second.width * second.height));
+  return overlapArea / smallerArea >= 0.8;
 }
 
 export function toReaderArticleHtml(value: string) {
@@ -226,24 +132,41 @@ export function toReaderArticleHtml(value: string) {
   canvas.querySelectorAll("[data-page-sheet],.text-handle,.media-handle").forEach(node => node.remove());
 
   const clearLayout = (element: HTMLElement) => {
-    element.removeAttribute("data-reader-x"); element.removeAttribute("data-reader-y");
-    element.removeAttribute("data-reader-width"); element.removeAttribute("data-reader-height");
+    element.removeAttribute("data-reader-x");
+    element.removeAttribute("data-reader-y");
+    element.removeAttribute("data-reader-width");
+    element.removeAttribute("data-reader-height");
     element.removeAttribute("data-layout");
-    ["position", "left", "right", "top", "bottom", "width", "height", "min-height", "max-height", "margin", "margin-left", "margin-right", "margin-top", "margin-bottom", "float", "clear", "transform", "z-index"].forEach(property => element.style.removeProperty(property));
+    [
+      "position", "left", "right", "top", "bottom", "width", "height", "min-height", "max-height",
+      "margin", "margin-left", "margin-right", "margin-top", "margin-bottom", "float", "clear", "transform", "z-index",
+    ].forEach(property => element.style.removeProperty(property));
   };
 
   const children = Array.from(canvas.children) as HTMLElement[];
-  const ordered = children.map((node, index) => ({ node, index, y: Number(node.dataset.readerY) })).sort((a, b) => {
-    const aY = Number.isFinite(a.y) ? a.y : Number.MAX_SAFE_INTEGER;
-    const bY = Number.isFinite(b.y) ? b.y : Number.MAX_SAFE_INTEGER;
-    return aY === bY ? a.index - b.index : aY - bY;
-  });
+  const ordered = children
+    .map((node, index) => ({ node, index, y: Number(node.dataset.readerY) }))
+    .sort((a, b) => {
+      const aY = Number.isFinite(a.y) ? a.y : Number.MAX_SAFE_INTEGER;
+      const bY = Number.isFinite(b.y) ? b.y : Number.MAX_SAFE_INTEGER;
+      return aY === bY ? a.index - b.index : aY - bY;
+    });
 
   const output = document.createElement("div");
+  const keptTextBlocks: HTMLElement[] = [];
+
   ordered.forEach(({ node }) => {
     if (node.classList.contains("text-block")) {
+      /*
+       * Legacy drafts may contain two identical draggable fields literally on
+       * top of each other. Remove only that measurable case. Never remove a
+       * paragraph merely because the same text appears somewhere else.
+       */
+      if (keptTextBlocks.some(previous => isStoredOverlappingDuplicate(node, previous))) return;
+      keptTextBlocks.push(node);
+
       const text = node.querySelector<HTMLElement>(".free-text");
-      if (!text || !text.textContent?.trim()) return;
+      if (!text || (!text.textContent?.trim() && !hasReaderMedia(text))) return;
 
       const normalizedHtml = normalizeFreeTextHtml(text);
       if (containsBlockMarkup(normalizedHtml)) {
@@ -269,8 +192,5 @@ export function toReaderArticleHtml(value: string) {
   });
 
   removeEmptyReaderParagraphs(output);
-  removeInternalParagraphDuplicates(output);
-  removeAdjacentDuplicateRuns(output);
-  removeRepeatedSubstantialBlocks(output);
   return sanitizeArticleHtml(output.innerHTML);
 }
