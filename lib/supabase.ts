@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { dedupeArticleTextBlocks } from "./dedupe-article-body";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,6 +37,28 @@ function parseReviewWrite(requestUrl: string, body: string) {
     };
   } catch {
     return null;
+  }
+}
+
+function cleanArticleWriteBody(requestUrl: string, body: string) {
+  if (!body || !requestUrl.includes("/rest/v1/articles")) return body;
+  try {
+    const decoded = JSON.parse(body);
+    const rows = Array.isArray(decoded) ? decoded : [decoded];
+    let changed = false;
+    const cleaned = rows.map(row => {
+      if (!row || typeof row !== "object") return row;
+      const record = row as Record<string, unknown>;
+      if (typeof record.body !== "string") return row;
+      const nextBody = dedupeArticleTextBlocks(record.body);
+      if (nextBody === record.body) return row;
+      changed = true;
+      return { ...record, body: nextBody };
+    });
+    if (!changed) return body;
+    return JSON.stringify(Array.isArray(decoded) ? cleaned : cleaned[0]);
+  } catch {
+    return body;
   }
 }
 
@@ -84,7 +107,12 @@ function instrumentedFetch(input: RequestInfo | URL, init?: RequestInit) {
         : Promise.resolve("")
     : Promise.resolve("");
 
-  return bodyPromise.then(async body => {
+  return bodyPromise.then(async originalBody => {
+    const body = cleanArticleWriteBody(requestUrl, originalBody);
+    if (body !== originalBody && typeof init?.body === "string") {
+      init = { ...init, body };
+    }
+
     if (isRestWrite) {
       const handled = await serverReviewWrite(init, request, requestUrl, body);
       if (handled) return handled;
