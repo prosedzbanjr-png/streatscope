@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 
+const BUILD = "R5";
+
 function normalizeVisibleText(value: string) {
   return value
     .normalize("NFKC")
@@ -16,107 +18,89 @@ function mediaInside(element: HTMLElement) {
   return Boolean(element.querySelector("img,video,iframe,svg"));
 }
 
-function collapseRepeatedVisibleText(element: HTMLElement) {
-  if (mediaInside(element)) return;
-  const visible = (element.innerText || element.textContent || "").replace(/\r\n?/g, "\n").trim();
-  if (visible.length < 120) return;
+function hasDirectTextBlockChild(element: HTMLElement) {
+  return Array.from(element.children).some(child => {
+    const tag = child.tagName;
+    return tag === "P" || tag === "H1" || tag === "H2" || tag === "H3" || tag === "BLOCKQUOTE" || tag === "LI" || tag === "DIV";
+  });
+}
 
-  const lines = visible.split(/\n+/).map(line => line.trim()).filter(Boolean);
-  if (lines.length >= 2 && lines.length % 2 === 0) {
-    const half = lines.length / 2;
-    const first = lines.slice(0, half).map(normalizeVisibleText);
-    const second = lines.slice(half).map(normalizeVisibleText);
-    if (first.every((line, index) => line === second[index]) && first.join(" ").length >= 80) {
-      element.textContent = lines.slice(0, half).join("\n");
+function leafBlocks(root: HTMLElement) {
+  return Array.from(root.querySelectorAll<HTMLElement>("p,h1,h2,h3,blockquote,li,div")).filter(element => {
+    if (element.tagName !== "DIV") return true;
+    return !hasDirectTextBlockChild(element);
+  });
+}
+
+function collapseRepeatedText(element: HTMLElement) {
+  if (mediaInside(element)) return;
+  const raw = (element.innerText || element.textContent || "").replace(/\r\n?/g, "\n").trim();
+  const normalized = normalizeVisibleText(raw);
+  if (normalized.length < 120) return;
+
+  // Exact A+A repetition after whitespace/zero-width normalization.
+  if (normalized.length % 2 === 0) {
+    const half = normalized.length / 2;
+    if (normalized.slice(0, half) === normalized.slice(half)) {
+      const words = raw.split(/\s+/).filter(Boolean);
+      const wordHalf = Math.floor(words.length / 2);
+      if (wordHalf >= 10) element.textContent = words.slice(0, wordHalf).join(" ");
       return;
     }
   }
 
-  const words = visible.split(/\s+/).filter(Boolean);
-  if (words.length < 20 || words.length % 2 !== 0) return;
-  const half = words.length / 2;
-  const first = words.slice(0, half);
-  const second = words.slice(half);
-  const equal = first.every((word, index) => normalizeVisibleText(word) === normalizeVisibleText(second[index] || ""));
-  if (equal && normalizeVisibleText(first.join(" ")).length >= 80) {
-    element.textContent = first.join(" ");
+  // CEF may insert a slightly different separator between both copies. Find
+  // the second occurrence by a substantial prefix instead of trusting markup.
+  const prefixLength = Math.min(90, Math.max(60, Math.floor(normalized.length / 4)));
+  const prefix = normalized.slice(0, prefixLength);
+  const repeatAt = normalized.indexOf(prefix, prefixLength);
+  if (repeatAt >= 80) {
+    const first = normalizeVisibleText(normalized.slice(0, repeatAt));
+    const second = normalizeVisibleText(normalized.slice(repeatAt));
+    if (first === second) {
+      const visiblePrefix = raw.slice(0, Math.max(0, Math.floor(raw.length / 2))).trim();
+      element.textContent = visiblePrefix;
+    }
   }
-}
-
-function hasDirectReaderBlockChild(element: HTMLElement) {
-  return Array.from(element.children).some(child => {
-    const tag = child.tagName;
-    return tag === "P" || tag === "H2" || tag === "H3" || tag === "BLOCKQUOTE" || tag === "DIV";
-  });
-}
-
-function readerLeafBlocks(root: HTMLElement) {
-  return Array.from(root.querySelectorAll<HTMLElement>("p,h2,h3,blockquote,div")).filter(element => {
-    if (element.tagName !== "DIV") return true;
-    return !hasDirectReaderBlockChild(element);
-  });
 }
 
 function repairReaderDom() {
-  const root = document.querySelector<HTMLElement>(".article-rich");
+  const root = document.querySelector<HTMLElement>(".article-content");
   if (!root) return;
 
-  readerLeafBlocks(root).forEach(collapseRepeatedVisibleText);
+  const blocks = leafBlocks(root);
+  blocks.forEach(collapseRepeatedText);
 
-  const blocks = readerLeafBlocks(root);
+  // Compare the final text that CEF actually paints. This intentionally works
+  // outside .article-rich too, so a malformed block moved by the WebView is
+  // still caught.
   const seen = new Map<string, HTMLElement>();
-  let previousFingerprint = "";
-
-  blocks.forEach(block => {
+  leafBlocks(root).forEach(block => {
     if (!block.isConnected || mediaInside(block)) return;
     const fingerprint = normalizeVisibleText(block.innerText || block.textContent || "");
-    if (!fingerprint) return;
-
-    // Short labels/headings are allowed to repeat. Long editorial blocks are not.
-    if (fingerprint.length >= 70 && fingerprint === previousFingerprint) {
+    if (fingerprint.length < 100) return;
+    const previous = seen.get(fingerprint);
+    if (previous?.isConnected) {
       block.remove();
       return;
     }
-
-    if (fingerprint.length >= 110) {
-      const earlier = seen.get(fingerprint);
-      if (earlier?.isConnected) {
-        block.remove();
-        return;
-      }
-      seen.set(fingerprint, block);
-    }
-
-    previousFingerprint = fingerprint;
+    seen.set(fingerprint, block);
   });
 
   root.querySelectorAll<HTMLElement>("p,div").forEach(element => {
     if (!element.textContent?.trim() && !mediaInside(element)) element.remove();
   });
 
-  document.documentElement.dataset.ssReaderRepair = "20260830-3";
+  document.documentElement.dataset.ssReaderRepair = BUILD;
 }
 
 export default function ReaderDomRepair() {
   useEffect(() => {
-    const timers = [0, 40, 150, 500, 1200, 2500].map(delay => window.setTimeout(repairReaderDom, delay));
-    let framePending = false;
-    const observer = new MutationObserver(() => {
-      if (framePending) return;
-      framePending = true;
-      window.requestAnimationFrame(() => {
-        framePending = false;
-        repairReaderDom();
-      });
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    const stopObserver = window.setTimeout(() => observer.disconnect(), 5000);
-    return () => {
-      timers.forEach(timer => window.clearTimeout(timer));
-      window.clearTimeout(stopObserver);
-      observer.disconnect();
-    };
+    // Re-run after hydration and after the async view-counter state update.
+    const delays = [0, 50, 150, 400, 900, 1600, 3000, 5000];
+    const timers = delays.map(delay => window.setTimeout(repairReaderDom, delay));
+    return () => timers.forEach(timer => window.clearTimeout(timer));
   }, []);
 
-  return null;
+  return <span aria-hidden="true" style={{ position: "fixed", right: 5, bottom: 48, zIndex: 2147483647, padding: "2px 4px", background: "#d71920", color: "white", font: "700 8px Arial,sans-serif", lineHeight: 1, opacity: .9, pointerEvents: "none" }}>{BUILD}</span>;
 }
