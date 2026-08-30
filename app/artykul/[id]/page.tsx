@@ -9,6 +9,11 @@ type Article = { id: number; title: string; category: string; excerpt: string; b
 type RailStory = Pick<Article, "id" | "title" | "category" | "image_url" | "views">;
 
 const ARTICLE24_PARAGRAPH = "Według pierwszych relacji nieznany mężczyzna ma uprowadzać przypadkowe osoby, a następnie zmuszać je do rozebrania się, tańczenia i śpiewania. Na ten moment nie wiadomo, czym kieruje się sprawca ani ilu mieszkańców mogło już paść jego ofiarą.";
+const REDLINE_DUPLICATE_PARAGRAPHS = [
+  "Redline Logistic działa w branży transportowej i logistycznej. Samo korzystanie z ochrony przy wartościowych przewozach nie jest niczym niezwykłym.",
+  "Więcej pytań pojawia się jednak w momencie, gdy pracownicy ochrony poruszają się Aleutianem wyposażonym w zewnętrzne płyty balistyczne.",
+  "Taki pojazd trudno uznać za zwykłe auto służbowe. Płyty balistyczne jasno sugerują przygotowanie na znacznie poważniejsze zagrożenie niż kradzież ładunku czy awanturę przy magazynie.",
+];
 
 function normalizeReaderText(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("pl-PL");
@@ -19,6 +24,78 @@ function htmlToReaderText(value: string) {
   const template = document.createElement("template");
   template.innerHTML = value;
   return template.content.textContent || "";
+}
+
+function removeRepeatedRedlineParagraphs(value: string) {
+  if (typeof window === "undefined" || !value) return value;
+  const template = document.createElement("template");
+  template.innerHTML = value;
+
+  // BR-y nie tworzą znaku w textContent, więc dajemy im niewidoczny dla układu separator tekstowy.
+  template.content.querySelectorAll("br").forEach(br => br.before(document.createTextNode(" ")));
+
+  type Point = { node: Text; offset: number };
+  const buildMap = () => {
+    const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+    let text = "";
+    const map: Point[] = [];
+    let pendingSpace: Point | null = null;
+    let current: Node | null;
+
+    while ((current = walker.nextNode())) {
+      const node = current as Text;
+      for (let offset = 0; offset < node.data.length; offset += 1) {
+        const char = node.data[offset];
+        if (/\s/.test(char)) {
+          if (text && !text.endsWith(" ") && !pendingSpace) pendingSpace = { node, offset };
+          continue;
+        }
+        if (pendingSpace) {
+          text += " ";
+          map.push(pendingSpace);
+          pendingSpace = null;
+        }
+        const lower = char.toLocaleLowerCase("pl-PL");
+        for (const lowered of lower) {
+          text += lowered;
+          map.push({ node, offset });
+        }
+      }
+    }
+    return { text, map };
+  };
+
+  for (const paragraph of REDLINE_DUPLICATE_PARAGRAPHS) {
+    const needle = normalizeReaderText(paragraph);
+    const { text, map } = buildMap();
+    const positions: number[] = [];
+    let cursor = 0;
+    while (true) {
+      const index = text.indexOf(needle, cursor);
+      if (index < 0) break;
+      positions.push(index);
+      cursor = index + needle.length;
+    }
+    if (positions.length < 2) continue;
+
+    for (const index of positions.slice(1).reverse()) {
+      const start = map[index];
+      const end = map[index + needle.length - 1];
+      if (!start || !end) continue;
+      const range = document.createRange();
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset + 1);
+      range.deleteContents();
+    }
+  }
+
+  template.content.querySelectorAll<HTMLElement>("p,.reader-text-block").forEach(element => {
+    if (normalizeReaderText(element.textContent || "")) return;
+    if (element.querySelector("img,video,iframe,svg,hr")) return;
+    element.remove();
+  });
+
+  return template.innerHTML;
 }
 
 function ensureArticle24Paragraph(value: string, articleId: number) {
@@ -126,7 +203,7 @@ export default function ArticlePage({ params }: { params: Promise<{ id: string }
   if (!article) return <main className="article-page article-loading"><div className="reading-progress" style={{ width: `${readProgress}%` }} /><header className="article-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a></header><section className="article-loading-shell"><div className="skeleton skeleton-kicker"/><div className="skeleton skeleton-title"/><div className="skeleton skeleton-title short"/><div className="skeleton skeleton-lead"/><div className="skeleton skeleton-article-image"/></section></main>;
   const date = article.published_at ? new Date(article.published_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "long", year: "numeric" }) : "DZISIAJ";
   const rawBody = article.body?.trim() || "";
-  const safeBody = ensureArticle24Paragraph(toReaderArticleHtml(rawBody), article.id);
+  const safeBody = ensureArticle24Paragraph(removeRepeatedRedlineParagraphs(toReaderArticleHtml(rawBody)), article.id);
   const bodyHasRichContent = /<\/?[a-z][\s\S]*>/i.test(safeBody);
   const paragraphs = rawBody ? rawBody.split(/\n\s*\n/).filter(Boolean) : [];
   const excerptText = normalizeReaderText(article.excerpt || "");
