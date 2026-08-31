@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { getSupabase } from "../../../lib/supabase";
+import MarketImageManager from "./market-image-manager";
 
 const MARKET_ROLES = new Set(["editor_in_chief", "deputy_editor_in_chief", "dealer"]);
 
@@ -39,5 +40,5 @@ export default function MarketAdminLayout({ children }: { children: ReactNode })
     return <main style={{minHeight:"100vh",background:"#111",color:"#fff",display:"grid",placeItems:"center",fontFamily:"Arial,sans-serif",fontWeight:900}}>BRAK DOSTĘPU.</main>;
   }
 
-  return children;
+  return <>{children}<MarketImageManager /></>;
 }
