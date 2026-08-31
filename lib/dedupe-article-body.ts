@@ -1,4 +1,8 @@
+type VisiblePoint = { char: string; start: number; end: number };
 type VisibleSegment = { text: string; start: number; end: number };
+
+const MIN_DUPLICATE_LENGTH = 100;
+const MAX_PASSES = 200;
 
 function decodeEntity(entity: string) {
   const lower = entity.toLowerCase();
@@ -28,6 +32,68 @@ function isParagraphBoundary(tag: string) {
   return /^<br\b/i.test(tag) || /^<\/(?:p|div|li|blockquote|h[1-6])\b/i.test(tag);
 }
 
+function visiblePoints(html: string) {
+  const points: VisiblePoint[] = [];
+  let i = 0;
+
+  while (i < html.length) {
+    if (html[i] === "<") {
+      const tagEnd = html.indexOf(">", i + 1);
+      if (tagEnd < 0) break;
+      const tag = html.slice(i, tagEnd + 1);
+      if (isParagraphBoundary(tag)) points.push({ char: " ", start: i, end: tagEnd + 1 });
+      i = tagEnd + 1;
+      continue;
+    }
+
+    if (html[i] === "&") {
+      const entityEnd = html.indexOf(";", i + 1);
+      if (entityEnd > i && entityEnd - i <= 12) {
+        const decoded = decodeEntity(html.slice(i, entityEnd + 1));
+        for (const char of decoded) points.push({ char, start: i, end: entityEnd + 1 });
+        i = entityEnd + 1;
+        continue;
+      }
+    }
+
+    points.push({ char: html[i], start: i, end: i + 1 });
+    i += 1;
+  }
+
+  return points;
+}
+
+function normalizedMap(html: string) {
+  const points = visiblePoints(html);
+  let text = "";
+  const map: VisiblePoint[] = [];
+  let pendingSpace: VisiblePoint | null = null;
+
+  for (const point of points) {
+    const raw = point.char.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, "");
+    if (!raw) continue;
+
+    if (/\s/u.test(raw)) {
+      if (text && !text.endsWith(" ") && !pendingSpace) pendingSpace = point;
+      continue;
+    }
+
+    if (pendingSpace) {
+      text += " ";
+      map.push(pendingSpace);
+      pendingSpace = null;
+    }
+
+    const lower = raw.toLocaleLowerCase("pl-PL");
+    for (const char of lower) {
+      text += char;
+      map.push(point);
+    }
+  }
+
+  return { text, map };
+}
+
 function extractVisibleSegments(html: string) {
   const segments: VisibleSegment[] = [];
   let text = "";
@@ -37,7 +103,9 @@ function extractVisibleSegments(html: string) {
 
   const flush = () => {
     const normalized = normalizeText(text);
-    if (normalized && start >= 0 && end >= start) segments.push({ text: normalized, start, end });
+    if (normalized.length >= MIN_DUPLICATE_LENGTH && start >= 0 && end >= start) {
+      segments.push({ text: normalized, start, end });
+    }
     text = "";
     start = -1;
     end = -1;
@@ -47,6 +115,7 @@ function extractVisibleSegments(html: string) {
   const append = (raw: string, rawStart: number, rawEnd: number) => {
     const visible = raw.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, "");
     if (!visible) return;
+
     for (const char of visible) {
       if (/\s/u.test(char)) {
         if (text) pendingSpace = true;
@@ -88,31 +157,37 @@ function extractVisibleSegments(html: string) {
   return segments;
 }
 
-function sameRun(segments: VisibleSegment[], first: number, second: number, length: number) {
-  for (let offset = 0; offset < length; offset += 1) {
-    if (segments[first + offset]?.text !== segments[second + offset]?.text) return false;
+function findDuplicatedParagraph(html: string) {
+  const { text } = normalizedMap(html);
+  const candidates = [...new Set(extractVisibleSegments(html).map(segment => segment.text))]
+    .sort((a, b) => b.length - a.length);
+
+  for (const candidate of candidates) {
+    const first = text.indexOf(candidate);
+    if (first < 0) continue;
+    const second = text.indexOf(candidate, first + candidate.length);
+    if (second >= 0) return candidate;
   }
-  return true;
+
+  return null;
 }
 
-function findImmediateRepeatedRun(segments: VisibleSegment[]) {
-  for (let start = 0; start < segments.length; start += 1) {
-    const maxLength = Math.min(12, Math.floor((segments.length - start) / 2));
-    for (let length = maxLength; length >= 1; length -= 1) {
-      if (!sameRun(segments, start, start + length, length)) continue;
-      const repeatedChars = segments.slice(start, start + length).reduce((sum, segment) => sum + segment.text.length, 0);
-      // One paragraph must be long enough to be unmistakable. Multi-paragraph
-      // runs can be shorter, but still need enough text to avoid removing
-      // intentional short headings, labels or repeated list items.
-      if (length === 1 && repeatedChars < 120) continue;
-      if (length > 1 && repeatedChars < 100) continue;
-      return {
-        start: segments[start + length].start,
-        end: segments[start + length * 2 - 1].end,
-      };
-    }
-  }
-  return null;
+function removeOneLaterOccurrence(html: string, target: string) {
+  const { text, map } = normalizedMap(html);
+  const first = text.indexOf(target);
+  if (first < 0) return { output: html, removed: false };
+
+  const second = text.indexOf(target, first + target.length);
+  if (second < 0) return { output: html, removed: false };
+
+  const startPoint = map[second];
+  const endPoint = map[second + target.length - 1];
+  if (!startPoint || !endPoint) return { output: html, removed: false };
+
+  return {
+    output: html.slice(0, startPoint.start) + html.slice(endPoint.end),
+    removed: true,
+  };
 }
 
 function findMatchingDivEnd(html: string, openStart: number) {
@@ -120,11 +195,13 @@ function findMatchingDivEnd(html: string, openStart: number) {
   tags.lastIndex = openStart;
   let depth = 0;
   let match: RegExpExecArray | null;
+
   while ((match = tags.exec(html))) {
     if (/^<\/div/i.test(match[0])) depth -= 1;
     else depth += 1;
     if (depth === 0) return match.index + match[0].length;
   }
+
   return -1;
 }
 
@@ -138,9 +215,14 @@ function stripEmptyTextBlocks(html: string) {
     const end = findMatchingDivEnd(html, start);
     if (end <= start) continue;
     const block = html.slice(start, end);
-    if (!normalizeText(block.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/gi, " ")) && !/<(?:img|video|iframe|svg|hr)\b/i.test(block)) {
-      removals.push({ start, end });
-    }
+    const visible = normalizeText(
+      block
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;|&#160;/gi, " "),
+    );
+
+    if (!visible && !/<(?:img|video|iframe|svg|hr)\b/i.test(block)) removals.push({ start, end });
     opener.lastIndex = end;
   }
 
@@ -151,20 +233,34 @@ function stripEmptyTextBlocks(html: string) {
   return output;
 }
 
+function stripEmptyContainers(html: string) {
+  let output = html;
+  for (let pass = 0; pass < 6; pass += 1) {
+    const next = output
+      .replace(/<p\b[^>]*>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/p\s*>/gi, "")
+      .replace(/<div\b([^>]*)class=(['"])([^'"]*\bfree-text\b[^'"]*)\2([^>]*)>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/div\s*>/gi, "");
+    output = stripEmptyTextBlocks(next);
+    if (output === next) break;
+  }
+  return output;
+}
+
 export function dedupeArticleTextBlocks(html: string) {
   if (!html) return html;
 
   let output = html;
-  // Remove only immediate A+A or A+B+C+A+B+C runs. The old implementation
-  // removed any matching paragraph anywhere in the article, which was too
-  // aggressive and could delete legitimate repeated wording.
-  for (let pass = 0; pass < 20; pass += 1) {
-    const segments = extractVisibleSegments(output);
-    const duplicate = findImmediateRepeatedRun(segments);
-    if (!duplicate) break;
-    output = output.slice(0, duplicate.start) + output.slice(duplicate.end);
+
+  // The old cleanup only caught immediately repeated runs. In the broken saves
+  // the second copy can sit behind extra wrappers, BRs or another editor block,
+  // so discover every long paragraph and remove later exact copies by visible
+  // text, regardless of the surrounding HTML structure.
+  for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+    const target = findDuplicatedParagraph(output);
+    if (!target) break;
+    const result = removeOneLaterOccurrence(output, target);
+    if (!result.removed) break;
+    output = result.output;
   }
 
-  output = output.replace(/<p\b[^>]*>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/p\s*>/gi, "");
-  return stripEmptyTextBlocks(output);
+  return stripEmptyContainers(output);
 }
