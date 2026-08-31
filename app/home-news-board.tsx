@@ -48,7 +48,7 @@ export function HomeNewsBoard() {
         const now=new Date().toISOString();
         const client=getSupabase();
         const [articlesResult,featuresResult,guideResult,slotsResult]=await Promise.all([
-          client.from("articles").select("id,title,category,excerpt,image_url,published_at,pinned").eq("status","published").is("archived_at",null).lte("published_at",now).order("pinned",{ascending:false}).order("published_at",{ascending:false}).limit(80),
+          client.from("articles").select("id,title,category,excerpt,image_url,published_at,pinned").eq("status","published").is("archived_at",null).lte("published_at",now).order("published_at",{ascending:false}).order("pinned",{ascending:false}).limit(80),
           client.from("street_features").select("id,kind,title,subtitle,description,image_url,created_at,featured").eq("published",true).is("archived_at",null).order("created_at",{ascending:false}).limit(80),
           client.from("guide_places").select("id,name,category,short_description,description,image_url,updated_at,submitted_at,featured_home").eq("active",true).eq("review_status","published").is("archived_at",null).order("updated_at",{ascending:false}).limit(80),
           client.from("homepage_slots").select("slot,source_type,source_id")
@@ -57,7 +57,7 @@ export function HomeNewsBoard() {
         const articles:Story[]=(articlesResult.data||[]).map((row:any)=>({key:`article-${row.id}`,source_type:"article",id:row.id,title:row.title,category:row.category||"WIADOMOŚCI",excerpt:row.excerpt,image_url:row.image_url,published_at:row.published_at,href:`/artykul/${row.id}`,pinned:Boolean(row.pinned)}));
         const features:Story[]=(featuresResult.data||[]).map((row:any)=>({key:`${row.kind}-${row.id}`,source_type:row.kind,id:row.id,title:row.title,category:row.kind==="fashion"?"FASHION":"MOTOR",excerpt:row.subtitle||row.description,image_url:row.image_url,published_at:row.created_at,href:`/${row.kind}/${row.id}`,pinned:Boolean(row.featured)}));
         const guide:Story[]=(guideResult.data||[]).map((row:any)=>({key:`guide-${row.id}`,source_type:"guide",id:row.id,title:row.name,category:"SCOPE GUIDE",excerpt:row.short_description||row.description,image_url:row.image_url,published_at:row.updated_at||row.submitted_at,href:`/guide/${row.id}`,pinned:Boolean(row.featured_home)}));
-        const merged=[...articles,...features,...guide].sort((a,b)=>Number(Boolean(b.pinned))-Number(Boolean(a.pinned))||timeValue(b.published_at)-timeValue(a.published_at));
+        const merged=[...articles,...features,...guide].sort((a,b)=>timeValue(b.published_at)-timeValue(a.published_at)||Number(Boolean(b.pinned))-Number(Boolean(a.pinned)));
         const lookup=new Map(merged.map(s=>[storyKey(s.source_type,s.id),s]));
         const manualMap:Record<string,Story>={};
         if(!slotsResult.error){for(const row of (slotsResult.data||[]) as SlotRow[]){const found=lookup.get(storyKey(row.source_type,row.source_id));if(found)manualMap[row.slot]=found;}}
