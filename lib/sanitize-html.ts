@@ -1,4 +1,4 @@
-// Deploy marker: repeated-paragraph fix v3
+// Deploy marker: nested-layout reader fix v4
 export function sanitizeArticleHtml(value: string) {
   if (typeof window === "undefined") return value;
   const template = document.createElement("template");
@@ -206,10 +206,24 @@ function removeImmediateRepeatedReaderRuns(root: HTMLElement) {
   }
 }
 
+function flattenNestedArticleLayouts(root: ParentNode) {
+  // Older editor saves can contain .article-layout wrapped inside another
+  // .article-layout. The reader used to treat that inner canvas as ordinary
+  // content, leaving editor positioning/classes active (and dark text on the
+  // dark reader). Flatten every nested canvas before converting text blocks.
+  root.querySelectorAll<HTMLElement>(".article-layout .article-layout").forEach(nested => {
+    const parent = nested.parentNode;
+    if (!parent) return;
+    while (nested.firstChild) parent.insertBefore(nested.firstChild, nested);
+    nested.remove();
+  });
+}
+
 export function toReaderArticleHtml(value: string) {
   if (typeof window === "undefined") return value;
   const template = document.createElement("template");
   template.innerHTML = value;
+  flattenNestedArticleLayouts(template.content);
   const canvas = template.content.querySelector<HTMLElement>(".article-layout") || template.content;
   canvas.querySelectorAll("[data-page-sheet],.text-handle,.media-handle").forEach(node => node.remove());
 
