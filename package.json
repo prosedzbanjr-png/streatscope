@@ -8,6 +8,7 @@
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
     "dev": "next dev",
+    "prebuild": "node scripts/fix-all-article-bodies.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."
