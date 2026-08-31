@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const PAGE_SIZE = 200;
-const MIN_DUPLICATE_LENGTH = 100;
-const MAX_PASSES = 200;
+// 1 September 2026 in Poland (CEST, UTC+2).
+const FROM = '2026-08-31T22:00:00.000Z';
+const TO = '2026-09-01T22:00:00.000Z';
+const MIN_PARAGRAPH_LENGTH = 80;
 
 function decodeEntity(entity) {
   const lower = entity.toLowerCase();
@@ -21,6 +22,7 @@ function decodeEntity(entity) {
 
 function normalizeText(value) {
   return value
+    .normalize('NFKC')
     .replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '')
     .replace(/\u00a0/g, ' ')
     .replace(/\s+/g, ' ')
@@ -28,317 +30,172 @@ function normalizeText(value) {
     .toLocaleLowerCase('pl-PL');
 }
 
-function isParagraphBoundary(tag) {
+function isBoundary(tag) {
   return /^<br\b/i.test(tag) || /^<\/(?:p|div|li|blockquote|h[1-6])\b/i.test(tag);
 }
 
-function visiblePoints(html) {
-  const points = [];
-  let i = 0;
-
-  while (i < html.length) {
-    if (html[i] === '<') {
-      const tagEnd = html.indexOf('>', i + 1);
-      if (tagEnd < 0) break;
-      const tag = html.slice(i, tagEnd + 1);
-      if (isParagraphBoundary(tag)) points.push({ char: ' ', start: i, end: tagEnd + 1 });
-      i = tagEnd + 1;
-      continue;
-    }
-
-    if (html[i] === '&') {
-      const entityEnd = html.indexOf(';', i + 1);
-      if (entityEnd > i && entityEnd - i <= 12) {
-        const decoded = decodeEntity(html.slice(i, entityEnd + 1));
-        for (const char of decoded) points.push({ char, start: i, end: entityEnd + 1 });
-        i = entityEnd + 1;
-        continue;
-      }
-    }
-
-    points.push({ char: html[i], start: i, end: i + 1 });
-    i += 1;
-  }
-
-  return points;
-}
-
-function normalizedMap(html) {
-  const points = visiblePoints(html);
+function extractParagraphs(html) {
+  const paragraphs = [];
   let text = '';
-  const map = [];
-  let pendingSpace = null;
-
-  for (const point of points) {
-    const raw = point.char.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '');
-    if (!raw) continue;
-
-    if (/\s/u.test(raw)) {
-      if (text && !text.endsWith(' ') && !pendingSpace) pendingSpace = point;
-      continue;
-    }
-
-    if (pendingSpace) {
-      text += ' ';
-      map.push(pendingSpace);
-      pendingSpace = null;
-    }
-
-    const lower = raw.toLocaleLowerCase('pl-PL');
-    for (const char of lower) {
-      text += char;
-      map.push(point);
-    }
-  }
-
-  return { text, map };
-}
-
-function extractVisibleSegments(html) {
-  const segments = [];
-  let text = '';
-  let start = -1;
-  let end = -1;
   let pendingSpace = false;
 
-  const flush = () => {
-    const normalized = normalizeText(text);
-    if (normalized.length >= MIN_DUPLICATE_LENGTH && start >= 0 && end >= start) {
-      segments.push({ text: normalized, start, end });
-    }
-    text = '';
-    start = -1;
-    end = -1;
-    pendingSpace = false;
-  };
-
-  const append = (raw, rawStart, rawEnd) => {
+  const append = raw => {
     const visible = raw.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '');
-    if (!visible) return;
-
     for (const char of visible) {
       if (/\s/u.test(char)) {
         if (text) pendingSpace = true;
         continue;
       }
-      if (start < 0) start = rawStart;
       if (pendingSpace && text && !text.endsWith(' ')) text += ' ';
       pendingSpace = false;
-      text += char.toLocaleLowerCase('pl-PL');
-      end = rawEnd;
+      text += char;
     }
+  };
+
+  const flush = () => {
+    const normalized = normalizeText(text);
+    if (normalized.length >= MIN_PARAGRAPH_LENGTH) paragraphs.push(normalized);
+    text = '';
+    pendingSpace = false;
   };
 
   let i = 0;
   while (i < html.length) {
     if (html[i] === '<') {
-      const tagEnd = html.indexOf('>', i + 1);
-      if (tagEnd < 0) break;
-      const tag = html.slice(i, tagEnd + 1);
-      if (isParagraphBoundary(tag)) flush();
-      i = tagEnd + 1;
+      const end = html.indexOf('>', i + 1);
+      if (end < 0) break;
+      const tag = html.slice(i, end + 1);
+      if (isBoundary(tag)) flush();
+      i = end + 1;
       continue;
     }
 
     if (html[i] === '&') {
-      const entityEnd = html.indexOf(';', i + 1);
-      if (entityEnd > i && entityEnd - i <= 12) {
-        append(decodeEntity(html.slice(i, entityEnd + 1)), i, entityEnd + 1);
-        i = entityEnd + 1;
+      const end = html.indexOf(';', i + 1);
+      if (end > i && end - i <= 12) {
+        append(decodeEntity(html.slice(i, end + 1)));
+        i = end + 1;
         continue;
       }
     }
 
-    append(html[i], i, i + 1);
+    append(html[i]);
     i += 1;
   }
 
   flush();
-  return segments;
+  return paragraphs;
 }
 
-function findDuplicatedParagraph(html) {
-  const { text } = normalizedMap(html);
-  const candidates = [...new Set(extractVisibleSegments(html).map(segment => segment.text))]
-    .sort((a, b) => b.length - a.length);
-
-  for (const candidate of candidates) {
-    const first = text.indexOf(candidate);
-    if (first < 0) continue;
-    const second = text.indexOf(candidate, first + candidate.length);
-    if (second >= 0) return candidate;
-  }
-
-  return null;
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function removeOneLaterOccurrence(html, target) {
-  const { text, map } = normalizedMap(html);
-  const first = text.indexOf(target);
-  if (first < 0) return { output: html, removed: false };
-
-  const second = text.indexOf(target, first + target.length);
-  if (second < 0) return { output: html, removed: false };
-
-  const startPoint = map[second];
-  const endPoint = map[second + target.length - 1];
-  if (!startPoint || !endPoint) return { output: html, removed: false };
-
-  return {
-    output: html.slice(0, startPoint.start) + html.slice(endPoint.end),
-    removed: true,
-  };
+function paragraphRegex(paragraph) {
+  const tokens = paragraph.split(/\s+/).filter(Boolean).map(escapeRegex);
+  // Same mechanism that fixed the old Redline article: match the visible
+  // paragraph while ignoring harmless inline HTML, BRs, entities and spaces.
+  const gap = '(?:\\s|&nbsp;|&#160;|&#x[a-f0-9]+;|&#\\d+;|<(?:\\/?(?:span|strong|b|i|em|u|s|a|small|mark)\\b[^>]*|br\\s*\\/?)>)*';
+  return new RegExp(tokens.join(gap), 'giu');
 }
 
-function matchingDivEnd(html, openStart) {
-  const tags = /<\/?div\b[^>]*>/gi;
-  tags.lastIndex = openStart;
-  let depth = 0;
-  let match;
-
-  while ((match = tags.exec(html))) {
-    if (/^<\/div/i.test(match[0])) depth -= 1;
-    else depth += 1;
-    if (depth === 0) return match.index + match[0].length;
-  }
-
-  return -1;
-}
-
-function stripEmptyTextBlocks(html) {
-  const opener = /<div\b[^>]*class=(['"])[^'"]*\btext-block\b[^'"]*\1[^>]*>/gi;
-  const removals = [];
-  let match;
-
-  while ((match = opener.exec(html))) {
-    const start = match.index;
-    const end = matchingDivEnd(html, start);
-    if (end <= start) continue;
-
-    const block = html.slice(start, end);
-    const visible = normalizeText(
-      block
-        .replace(/<br\s*\/?>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;|&#160;/gi, ' '),
-    );
-
-    if (!visible && !/<(?:img|video|iframe|svg|hr)\b/i.test(block)) removals.push({ start, end });
-    opener.lastIndex = end;
-  }
-
+function stripEmptyWrappers(html) {
   let output = html;
-  removals.sort((a, b) => b.start - a.start).forEach(range => {
-    output = output.slice(0, range.start) + output.slice(range.end);
-  });
-  return output;
-}
-
-function stripEmptyContainers(html) {
-  let output = html;
-
-  for (let pass = 0; pass < 6; pass += 1) {
-    const before = output;
+  let previous = '';
+  for (let pass = 0; pass < 8 && output !== previous; pass += 1) {
+    previous = output;
     output = output
       .replace(/<p\b[^>]*>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/p\s*>/gi, '')
-      .replace(/<div\b([^>]*)class=(['"])([^'"]*\bfree-text\b[^'"]*)\2([^>]*)>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/div\s*>/gi, '');
-    output = stripEmptyTextBlocks(output);
-    if (output === before) break;
+      .replace(/<div\b([^>]*)class=(['"])([^'"]*\bfree-text\b[^'"]*)\2([^>]*)>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/div\s*>/gi, '')
+      .replace(/<div\b([^>]*)class=(['"])([^'"]*\btext-block\b[^'"]*)\2([^>]*)>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/div\s*>/gi, '');
   }
-
   return output;
 }
 
-function cleanupBody(html) {
+function surgicalCleanup(html) {
   let output = String(html || '');
-  let removedParagraphs = 0;
+  const paragraphs = extractParagraphs(output);
+  const counts = new Map();
+  for (const paragraph of paragraphs) counts.set(paragraph, (counts.get(paragraph) || 0) + 1);
 
-  for (let pass = 0; pass < MAX_PASSES; pass += 1) {
-    const target = findDuplicatedParagraph(output);
-    if (!target) break;
+  const duplicateParagraphs = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([paragraph]) => paragraph)
+    .sort((a, b) => b.length - a.length);
 
-    const result = removeOneLaterOccurrence(output, target);
-    if (!result.removed) break;
+  let removed = 0;
+  for (const paragraph of duplicateParagraphs) {
+    const regex = paragraphRegex(paragraph);
+    const matches = [...output.matchAll(regex)];
+    if (matches.length <= 1) continue;
 
-    output = result.output;
-    removedParagraphs += 1;
+    for (const match of matches.slice(1).sort((a, b) => (b.index ?? 0) - (a.index ?? 0))) {
+      const start = match.index ?? 0;
+      output = output.slice(0, start) + output.slice(start + match[0].length);
+      removed += 1;
+    }
   }
 
-  return {
-    output: stripEmptyContainers(output),
-    removedParagraphs,
-  };
+  output = stripEmptyWrappers(output);
+  return { output, removed, duplicateParagraphs: duplicateParagraphs.length };
 }
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !key) throw new Error('Missing Supabase service env for all-article cleanup');
+if (!url || !key) throw new Error('Missing Supabase service env for Sep 1 article cleanup');
 
 const client = createClient(url, key, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-let scanned = 0;
+const { data: rows, error } = await client
+  .from('articles')
+  .select('id,title,body,published_at')
+  .gte('published_at', FROM)
+  .lt('published_at', TO)
+  .order('id', { ascending: true });
+
+if (error) throw new Error(error.message);
+
 let changed = 0;
-let removedParagraphs = 0;
+let removed = 0;
 const changedIds = [];
 
-for (let from = 0; ; from += PAGE_SIZE) {
-  const { data: rows, error } = await client
-    .from('articles')
-    .select('id,title,body')
-    .order('id', { ascending: true })
-    .range(from, from + PAGE_SIZE - 1);
+for (const article of rows || []) {
+  const before = String(article.body || '');
+  const cleaned = surgicalCleanup(before);
+  const after = cleaned.output;
 
-  if (error) throw new Error(error.message);
-  const batch = rows || [];
-  if (!batch.length) break;
+  console.log(
+    `[sep1-cleanup] scan id=${article.id} title=${JSON.stringify(article.title || '')} duplicateParagraphs=${cleaned.duplicateParagraphs} removed=${cleaned.removed}`,
+  );
 
-  for (const article of batch) {
-    scanned += 1;
-    const before = String(article.body || '');
-    const cleaned = cleanupBody(before);
-    const after = cleaned.output;
+  if (after === before) continue;
 
-    if (after === before) continue;
-
-    const verification = cleanupBody(after);
-    if (verification.output !== after || verification.removedParagraphs !== 0) {
-      throw new Error(`Cleanup verification failed for article id=${article.id}`);
-    }
-
-    const { error: updateError } = await client
-      .from('articles')
-      .update({ body: after })
-      .eq('id', article.id);
-
-    if (updateError) throw new Error(`Article ${article.id}: ${updateError.message}`);
-
-    const { data: verified, error: verifyError } = await client
-      .from('articles')
-      .select('body')
-      .eq('id', article.id)
-      .single();
-
-    if (verifyError || !verified) {
-      throw new Error(`Article ${article.id}: ${verifyError?.message || 'verification read failed'}`);
-    }
-
-    if (String(verified.body || '') !== after) {
-      throw new Error(`Article ${article.id}: database verification mismatch`);
-    }
-
-    changed += 1;
-    removedParagraphs += cleaned.removedParagraphs;
-    changedIds.push(article.id);
-    console.log(
-      `[all-article-cleanup] fixed id=${article.id} title=${JSON.stringify(article.title || '')} paragraphs=${cleaned.removedParagraphs} bytes=${before.length}->${after.length}`,
-    );
+  const verification = surgicalCleanup(after);
+  if (verification.output !== after || verification.removed !== 0) {
+    throw new Error(`Sep 1 cleanup was not idempotent for article id=${article.id}`);
   }
 
-  if (batch.length < PAGE_SIZE) break;
+  const { error: updateError } = await client
+    .from('articles')
+    .update({ body: after })
+    .eq('id', article.id);
+  if (updateError) throw new Error(`Article ${article.id}: ${updateError.message}`);
+
+  const { data: verified, error: verifyError } = await client
+    .from('articles')
+    .select('body')
+    .eq('id', article.id)
+    .single();
+  if (verifyError || !verified) throw new Error(`Article ${article.id}: ${verifyError?.message || 'verification read failed'}`);
+  if (String(verified.body || '') !== after) throw new Error(`Article ${article.id}: database verification mismatch`);
+
+  changed += 1;
+  removed += cleaned.removed;
+  changedIds.push(article.id);
 }
 
 console.log(
-  `[all-article-cleanup] VERIFIED scanned=${scanned} changed=${changed} removedParagraphs=${removedParagraphs} ids=${changedIds.join(',') || 'none'}`,
+  `[sep1-cleanup] VERIFIED scanned=${rows?.length || 0} changed=${changed} removedCopies=${removed} ids=${changedIds.join(',') || 'none'}`,
 );
