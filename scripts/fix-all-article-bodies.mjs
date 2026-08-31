@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 const PAGE_SIZE = 200;
-const MAX_PASSES = 30;
+const MIN_DUPLICATE_LENGTH = 100;
+const MAX_PASSES = 200;
 
 function decodeEntity(entity) {
   const lower = entity.toLowerCase();
@@ -31,6 +32,68 @@ function isParagraphBoundary(tag) {
   return /^<br\b/i.test(tag) || /^<\/(?:p|div|li|blockquote|h[1-6])\b/i.test(tag);
 }
 
+function visiblePoints(html) {
+  const points = [];
+  let i = 0;
+
+  while (i < html.length) {
+    if (html[i] === '<') {
+      const tagEnd = html.indexOf('>', i + 1);
+      if (tagEnd < 0) break;
+      const tag = html.slice(i, tagEnd + 1);
+      if (isParagraphBoundary(tag)) points.push({ char: ' ', start: i, end: tagEnd + 1 });
+      i = tagEnd + 1;
+      continue;
+    }
+
+    if (html[i] === '&') {
+      const entityEnd = html.indexOf(';', i + 1);
+      if (entityEnd > i && entityEnd - i <= 12) {
+        const decoded = decodeEntity(html.slice(i, entityEnd + 1));
+        for (const char of decoded) points.push({ char, start: i, end: entityEnd + 1 });
+        i = entityEnd + 1;
+        continue;
+      }
+    }
+
+    points.push({ char: html[i], start: i, end: i + 1 });
+    i += 1;
+  }
+
+  return points;
+}
+
+function normalizedMap(html) {
+  const points = visiblePoints(html);
+  let text = '';
+  const map = [];
+  let pendingSpace = null;
+
+  for (const point of points) {
+    const raw = point.char.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '');
+    if (!raw) continue;
+
+    if (/\s/u.test(raw)) {
+      if (text && !text.endsWith(' ') && !pendingSpace) pendingSpace = point;
+      continue;
+    }
+
+    if (pendingSpace) {
+      text += ' ';
+      map.push(pendingSpace);
+      pendingSpace = null;
+    }
+
+    const lower = raw.toLocaleLowerCase('pl-PL');
+    for (const char of lower) {
+      text += char;
+      map.push(point);
+    }
+  }
+
+  return { text, map };
+}
+
 function extractVisibleSegments(html) {
   const segments = [];
   let text = '';
@@ -40,7 +103,7 @@ function extractVisibleSegments(html) {
 
   const flush = () => {
     const normalized = normalizeText(text);
-    if (normalized && start >= 0 && end >= start) {
+    if (normalized.length >= MIN_DUPLICATE_LENGTH && start >= 0 && end >= start) {
       segments.push({ text: normalized, start, end });
     }
     text = '';
@@ -52,6 +115,7 @@ function extractVisibleSegments(html) {
   const append = (raw, rawStart, rawEnd) => {
     const visible = raw.replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '');
     if (!visible) return;
+
     for (const char of visible) {
       if (/\s/u.test(char)) {
         if (text) pendingSpace = true;
@@ -93,37 +157,37 @@ function extractVisibleSegments(html) {
   return segments;
 }
 
-function sameRun(segments, first, second, length) {
-  for (let offset = 0; offset < length; offset += 1) {
-    if (segments[first + offset]?.text !== segments[second + offset]?.text) return false;
+function findDuplicatedParagraph(html) {
+  const { text } = normalizedMap(html);
+  const candidates = [...new Set(extractVisibleSegments(html).map(segment => segment.text))]
+    .sort((a, b) => b.length - a.length);
+
+  for (const candidate of candidates) {
+    const first = text.indexOf(candidate);
+    if (first < 0) continue;
+    const second = text.indexOf(candidate, first + candidate.length);
+    if (second >= 0) return candidate;
   }
-  return true;
+
+  return null;
 }
 
-function findImmediateRepeatedRun(segments) {
-  for (let start = 0; start < segments.length; start += 1) {
-    const maxLength = Math.min(16, Math.floor((segments.length - start) / 2));
-    for (let length = maxLength; length >= 1; length -= 1) {
-      if (!sameRun(segments, start, start + length, length)) continue;
+function removeOneLaterOccurrence(html, target) {
+  const { text, map } = normalizedMap(html);
+  const first = text.indexOf(target);
+  if (first < 0) return { output: html, removed: false };
 
-      const repeatedChars = segments
-        .slice(start, start + length)
-        .reduce((sum, segment) => sum + segment.text.length, 0);
+  const second = text.indexOf(target, first + target.length);
+  if (second < 0) return { output: html, removed: false };
 
-      // Keep this deliberately conservative: only unmistakable long repeats.
-      // This prevents legitimate short headings, labels or list rows from being removed.
-      if (length === 1 && repeatedChars < 120) continue;
-      if (length > 1 && repeatedChars < 100) continue;
+  const startPoint = map[second];
+  const endPoint = map[second + target.length - 1];
+  if (!startPoint || !endPoint) return { output: html, removed: false };
 
-      return {
-        start: segments[start + length].start,
-        end: segments[start + length * 2 - 1].end,
-        length,
-        repeatedChars,
-      };
-    }
-  }
-  return null;
+  return {
+    output: html.slice(0, startPoint.start) + html.slice(endPoint.end),
+    removed: true,
+  };
 }
 
 function matchingDivEnd(html, openStart) {
@@ -159,42 +223,51 @@ function stripEmptyTextBlocks(html) {
         .replace(/&nbsp;|&#160;/gi, ' '),
     );
 
-    if (!visible && !/<(?:img|video|iframe|svg|hr)\b/i.test(block)) {
-      removals.push({ start, end });
-    }
-
+    if (!visible && !/<(?:img|video|iframe|svg|hr)\b/i.test(block)) removals.push({ start, end });
     opener.lastIndex = end;
   }
 
   let output = html;
-  removals
-    .sort((a, b) => b.start - a.start)
-    .forEach(range => {
-      output = output.slice(0, range.start) + output.slice(range.end);
-    });
+  removals.sort((a, b) => b.start - a.start).forEach(range => {
+    output = output.slice(0, range.start) + output.slice(range.end);
+  });
+  return output;
+}
+
+function stripEmptyContainers(html) {
+  let output = html;
+
+  for (let pass = 0; pass < 6; pass += 1) {
+    const before = output;
+    output = output
+      .replace(/<p\b[^>]*>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/p\s*>/gi, '')
+      .replace(/<div\b([^>]*)class=(['"])([^'"]*\bfree-text\b[^'"]*)\2([^>]*)>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/div\s*>/gi, '');
+    output = stripEmptyTextBlocks(output);
+    if (output === before) break;
+  }
 
   return output;
 }
 
 function cleanupBody(html) {
   let output = String(html || '');
-  let removedRuns = 0;
+  let removedParagraphs = 0;
 
   for (let pass = 0; pass < MAX_PASSES; pass += 1) {
-    const segments = extractVisibleSegments(output);
-    const duplicate = findImmediateRepeatedRun(segments);
-    if (!duplicate) break;
+    const target = findDuplicatedParagraph(output);
+    if (!target) break;
 
-    output = output.slice(0, duplicate.start) + output.slice(duplicate.end);
-    removedRuns += 1;
+    const result = removeOneLaterOccurrence(output, target);
+    if (!result.removed) break;
+
+    output = result.output;
+    removedParagraphs += 1;
   }
 
-  output = output
-    .replace(/<p\b[^>]*>(?:\s|&nbsp;|&#160;|<br\s*\/?>)*<\/p\s*>/gi, '')
-    .replace(/<div\b([^>]*)class=(['"])([^'"]*\bfree-text\b[^'"]*)\2([^>]*)>\s*(?:<br\s*\/?>\s*)?<\/div\s*>/gi, '');
-  output = stripEmptyTextBlocks(output);
-
-  return { output, removedRuns };
+  return {
+    output: stripEmptyContainers(output),
+    removedParagraphs,
+  };
 }
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -207,7 +280,7 @@ const client = createClient(url, key, {
 
 let scanned = 0;
 let changed = 0;
-let removedRuns = 0;
+let removedParagraphs = 0;
 const changedIds = [];
 
 for (let from = 0; ; from += PAGE_SIZE) {
@@ -229,10 +302,9 @@ for (let from = 0; ; from += PAGE_SIZE) {
 
     if (after === before) continue;
 
-    // Verify that another pass does not find another repeat before touching the DB.
     const verification = cleanupBody(after);
-    if (verification.output !== after) {
-      throw new Error(`Cleanup was not idempotent for article id=${article.id}`);
+    if (verification.output !== after || verification.removedParagraphs !== 0) {
+      throw new Error(`Cleanup verification failed for article id=${article.id}`);
     }
 
     const { error: updateError } = await client
@@ -257,10 +329,10 @@ for (let from = 0; ; from += PAGE_SIZE) {
     }
 
     changed += 1;
-    removedRuns += cleaned.removedRuns;
+    removedParagraphs += cleaned.removedParagraphs;
     changedIds.push(article.id);
     console.log(
-      `[all-article-cleanup] fixed id=${article.id} title=${JSON.stringify(article.title || '')} runs=${cleaned.removedRuns} bytes=${before.length}->${after.length}`,
+      `[all-article-cleanup] fixed id=${article.id} title=${JSON.stringify(article.title || '')} paragraphs=${cleaned.removedParagraphs} bytes=${before.length}->${after.length}`,
     );
   }
 
@@ -268,5 +340,5 @@ for (let from = 0; ; from += PAGE_SIZE) {
 }
 
 console.log(
-  `[all-article-cleanup] VERIFIED scanned=${scanned} changed=${changed} removedRuns=${removedRuns} ids=${changedIds.join(',') || 'none'}`,
+  `[all-article-cleanup] VERIFIED scanned=${scanned} changed=${changed} removedParagraphs=${removedParagraphs} ids=${changedIds.join(',') || 'none'}`,
 );
