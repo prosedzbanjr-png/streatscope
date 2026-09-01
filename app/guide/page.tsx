@@ -22,7 +22,7 @@ export default function GuidePage(){
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{ let alive=true; (async()=>{ try{
-    const {data}=await getSupabase().from("guide_places").select("*").eq("active",true).is("archived_at",null).order("featured",{ascending:false}).order("name",{ascending:true});
+    const {data}=await getSupabase().from("guide_places").select("*").eq("active",true).is("archived_at",null).order("created_at",{ascending:false}).order("featured",{ascending:false}).order("id",{ascending:false});
     if(alive)setRows((data as GuidePlace[]|null)??[]);
   } finally { if(alive)setLoading(false); } })(); return()=>{alive=false}; },[]);
 
