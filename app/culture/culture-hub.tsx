@@ -8,12 +8,23 @@ type Kind = "fashion" | "motor";
 type Feature = {
   id:number; kind:Kind; title:string; subtitle:string|null; description:string|null; image_url:string|null;
   gallery:string[]|null; person_name:string|null; location:string|null; vehicle_model:string|null; vehicle_year:string|null;
-  owner_name:string|null; workshop:string|null; details:string|null; badge:string|null; featured:boolean; created_at:string;
+  owner_name:string|null; workshop:string|null; details:string|null; badge:string|null; featured:boolean;
+  created_at:string|null; updated_at:string|null; submitted_at:string|null; reviewed_at:string|null;
 };
 
 function meta(row:Feature) {
   if (row.kind === "fashion") return [row.person_name, row.location].filter(Boolean).join(" · ") || "STREET FASHION";
   return [row.vehicle_model, row.vehicle_year, row.owner_name ? `OWNER: ${row.owner_name}` : null].filter(Boolean).join(" · ") || "STREET MOTOR";
+}
+
+function dateValue(value:string|null|undefined){
+  if(!value)return 0;
+  const parsed=Date.parse(value);
+  return Number.isFinite(parsed)?parsed:0;
+}
+
+function publicationTime(row:Feature){
+  return dateValue(row.reviewed_at)||dateValue(row.updated_at)||dateValue(row.submitted_at)||dateValue(row.created_at);
 }
 
 export function CultureHub({ kind }:{ kind:Kind }) {
@@ -29,10 +40,11 @@ export function CultureHub({ kind }:{ kind:Kind }) {
           .eq("kind", kind)
           .eq("published", true)
           .is("archived_at", null)
-          .order("featured", { ascending: false })
-          .order("created_at", { ascending: false })
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: false })
           .limit(30);
-        if (!cancelled) setRows((data as Feature[] | null) || []);
+        const sorted=((data as Feature[] | null) || []).sort((a,b)=>publicationTime(b)-publicationTime(a)||Number(Boolean(b.featured))-Number(Boolean(a.featured))||b.id-a.id);
+        if (!cancelled) setRows(sorted);
       } finally {
         if (!cancelled) setLoading(false);
       }
