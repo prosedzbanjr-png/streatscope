@@ -8,12 +8,25 @@ type GuidePlace = {
   id:number; name:string; category:string; neighborhood:string|null; short_description:string|null; description:string|null;
   image_url:string|null; address:string|null; phone:string|null; hours:string|null; website_url:string|null; price_level:string|null;
   featured:boolean; featured_label:string|null; active:boolean;
+  created_at:string|null; updated_at:string|null; submitted_at:string|null; reviewed_at:string|null;
 };
 
 const categories = [
   ["all","WSZYSTKO"],["food","JEDZENIE"],["nightlife","NOCNE ŻYCIE"],["motor","MOTORYZACJA"],
   ["shopping","ZAKUPY"],["services","USŁUGI"],["entertainment","ROZRYWKA"]
 ];
+
+function dateValue(value:string|null|undefined){
+  if(!value)return 0;
+  const parsed=Date.parse(value);
+  return Number.isFinite(parsed)?parsed:0;
+}
+
+function publicationTime(row:GuidePlace){
+  // Guide może powstać wcześniej jako szkic. Przy publikacji/akceptacji ustawiane są
+  // reviewed_at i updated_at, więc to one mają pierwszeństwo przed created_at.
+  return dateValue(row.reviewed_at)||dateValue(row.updated_at)||dateValue(row.submitted_at)||dateValue(row.created_at);
+}
 
 export default function GuidePage(){
   const [rows,setRows]=useState<GuidePlace[]>([]);
@@ -22,8 +35,9 @@ export default function GuidePage(){
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{ let alive=true; (async()=>{ try{
-    const {data}=await getSupabase().from("guide_places").select("*").eq("active",true).is("archived_at",null).order("created_at",{ascending:false}).order("featured",{ascending:false}).order("id",{ascending:false});
-    if(alive)setRows((data as GuidePlace[]|null)??[]);
+    const {data}=await getSupabase().from("guide_places").select("*").eq("active",true).is("archived_at",null).order("updated_at",{ascending:false}).order("id",{ascending:false});
+    const sorted=((data as GuidePlace[]|null)??[]).sort((a,b)=>publicationTime(b)-publicationTime(a)||Number(Boolean(b.featured))-Number(Boolean(a.featured))||b.id-a.id);
+    if(alive)setRows(sorted);
   } finally { if(alive)setLoading(false); } })(); return()=>{alive=false}; },[]);
 
   const filtered=useMemo(()=>rows.filter(row=>{
