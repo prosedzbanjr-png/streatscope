@@ -18,7 +18,29 @@ function parseEntityId(value: unknown, url: string) {
     const matched = raw.match(/^eq\.(\d+)$/);
     const fromUrl = matched ? Number(matched[1]) : 0;
     return Number.isInteger(fromUrl) && fromUrl > 0 ? fromUrl : 0;
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
+}
+
+async function recoverGuideId(payload: Record<string, unknown>) {
+  const name = String(payload.name || "").trim();
+  if (!name) return 0;
+
+  const sb = getSupabase();
+  let query = sb.from("guide_places").select("id").eq("name", name);
+
+  const submittedBy = String(payload.submitted_by || "").trim();
+  if (submittedBy) query = query.eq("submitted_by", submittedBy);
+
+  const updatedAt = String(payload.updated_at || "").trim();
+  if (updatedAt) query = query.eq("updated_at", updatedAt);
+
+  const { data, error } = await query.order("id", { ascending: false }).limit(1).maybeSingle();
+  if (error) return 0;
+
+  const id = Number(data?.id);
+  return Number.isInteger(id) && id > 0 ? id : 0;
 }
 
 export default function LbPhonePublishToggle({ mode }: Props) {
@@ -29,7 +51,9 @@ export default function LbPhonePublishToggle({ mode }: Props) {
   const armedRef = useRef(false);
   const sendingRef = useRef(false);
 
-  useEffect(() => { armedRef.current = armed; }, [armed]);
+  useEffect(() => {
+    armedRef.current = armed;
+  }, [armed]);
 
   useEffect(() => {
     if (mode !== "article" || typeof window === "undefined") return;
@@ -48,9 +72,13 @@ export default function LbPhonePublishToggle({ mode }: Props) {
         const { data: staff } = await sb.from("staff_accounts").select("active,role").eq("email", email).maybeSingle();
         if (!active) return;
         setAllowed(Boolean(staff?.active && ["editor_in_chief", "deputy_editor_in_chief"].includes(String(staff?.role || ""))));
-      } catch { if (active) setAllowed(false); }
+      } catch {
+        if (active) setAllowed(false);
+      }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -73,7 +101,9 @@ export default function LbPhonePublishToggle({ mode }: Props) {
       try {
         const decoded = JSON.parse(detail.body);
         payload = Array.isArray(decoded) ? (decoded[0] || {}) : decoded;
-      } catch { return; }
+      } catch {
+        return;
+      }
 
       let kind: PublishKind | null = null;
       let eligible = false;
@@ -98,12 +128,8 @@ export default function LbPhonePublishToggle({ mode }: Props) {
       }
 
       if (!eligible || !kind) return;
-      const id = parseEntityId(detail.result, url);
-      if (!id) {
-        setNote("Publikacja zapisana, ale nie udało się ustalić ID do powiadomienia.");
-        return;
-      }
 
+      const directId = parseEntityId(detail.result, url);
       sendingRef.current = true;
       armedRef.current = false;
       setArmed(false);
@@ -111,6 +137,15 @@ export default function LbPhonePublishToggle({ mode }: Props) {
 
       void (async () => {
         try {
+          let id = directId;
+          if (!id && mode === "guide") {
+            id = await recoverGuideId(payload);
+          }
+          if (!id) {
+            setNote("Publikacja zapisana, ale nie udało się ustalić ID do powiadomienia.");
+            return;
+          }
+
           const sb = getSupabase();
           const { data } = await sb.auth.getSession();
           const token = data.session?.access_token;
