@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "../lib/supabase";
+import { optimizedImageUrl } from "../lib/image-optimization";
 import "./home-guide-strip.css";
 
 type GuidePlace = {
@@ -71,7 +72,7 @@ export function HomeGuideStrip() {
 
     {places.length > 0 ? <div className="scope-guide-home__grid">
       {places.map(place => <a className="scope-guide-home__card" href={`/guide/${place.id}`} key={place.id}>
-        <div className="scope-guide-home__image" style={place.image_url ? { backgroundImage: `url(${place.image_url})` } : undefined}>
+        <div className="scope-guide-home__image" style={place.image_url ? { backgroundImage: `url(${optimizedImageUrl(place.image_url, 1080)})` } : undefined}>
           <span>{place.featured_label || "SCOPE GUIDE"}</span>
         </div>
         <div className="scope-guide-home__body">

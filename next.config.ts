@@ -7,6 +7,16 @@ const noCacheHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  images: {
+    minimumCacheTTL: 2_678_400,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "ftxpzdnglxubuyezqkqp.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
+  },
   async headers() {
     return [
       { source: "/", headers: noCacheHeaders },

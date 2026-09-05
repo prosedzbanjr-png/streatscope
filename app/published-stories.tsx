@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "../lib/supabase";
+import { optimizedImageUrl } from "../lib/image-optimization";
 
 type Story = { id?: number; tag: string; title: string; image: string; large?: boolean; excerpt?: string };
 
@@ -20,5 +21,5 @@ export function PublishedStories() {
       setStories(items.map((item, index) => ({ id: item.id, tag: item.category, title: item.title, excerpt: item.excerpt, image: item.image_url || ["/images/hero.png", "/images/hq.png", "/images/mural.png"][index % 3], large: index === 0 })));
     });
   }, []);
-  return <div className="story-grid">{stories.map((story) => <article key={story.id ?? story.title} className={story.large ? "story featured" : "story"}><img src={story.image} alt=""/><div className="story-overlay"/><div className="story-copy"><p>{story.tag}</p><h2>{story.title}</h2>{story.id ? <a href={`/artykul/${story.id}`}>CZYTAJ ARTYKUŁ →</a> : <span>{story.excerpt ?? "CZYTAJ HISTORIĘ →"}</span>}</div></article>)}</div>;
+  return <div className="story-grid">{stories.map((story) => <article key={story.id ?? story.title} className={story.large ? "story featured" : "story"}><img src={optimizedImageUrl(story.image,1080)} alt=""/><div className="story-overlay"/><div className="story-copy"><p>{story.tag}</p><h2>{story.title}</h2>{story.id ? <a href={`/artykul/${story.id}`}>CZYTAJ ARTYKUŁ →</a> : <span>{story.excerpt ?? "CZYTAJ HISTORIĘ →"}</span>}</div></article>)}</div>;
 }

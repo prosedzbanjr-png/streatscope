@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "../lib/supabase";
+import { optimizedImageUrl } from "../lib/image-optimization";
 import "./home-market-strip.css";
 
 type Vehicle={
@@ -38,7 +39,7 @@ export function HomeMarketStrip(){
     const auction=v.sale_mode==="auction";
     const amount=auction?(v.auction_current_bid??v.auction_start_price??0):(v.price??0);
     return <a className={`home-market-card ${auction?"auction":"sale"}`} href={`/market/${v.id}`} key={v.id}>
-      <div className="home-market-photo" style={v.image_url?{backgroundImage:`url(${v.image_url})`}:undefined}>
+      <div className="home-market-photo" style={v.image_url?{backgroundImage:`url(${optimizedImageUrl(v.image_url,828)})`}:undefined}>
         <span>{auction?"LICYTACJA":"NA SPRZEDAŻ"}</span>
       </div>
       <div className="home-market-info">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "../../lib/supabase";
+import { optimizedImageUrl } from "../../lib/image-optimization";
 import "./culture.css";
 
 type Kind = "fashion" | "motor";
@@ -59,12 +60,12 @@ export function CultureHub({ kind }:{ kind:Kind }) {
     <section className="culture-mast"><p className="culture-kicker">STREETSCOPE / {isFashion?"STYLE DESK":"MOTOR DESK"}</p><h1>{isFashion?<>STREET<br/><em>FASHION.</em></>:<>STREET<br/><em>MOTOR.</em></>}</h1><p>{isFashion?"Ludzie, outfity, nowe dropy i styl Los Santos — prosto z ulicy.":"Buildy, car meety, warsztaty i auta mieszkańców — bez katalogowego nadęcia."}</p></section>
     {loading ? <section className="culture-loading"><div/><div/><div/></section> : !hero ? <section className="culture-empty"><b>{isFashion?"PIERWSZY LOOK JESZCZE NIE WJECHAŁ.":"PIERWSZY BUILD JESZCZE NIE WJECHAŁ."}</b><p>Redakcja już może dodawać wpisy z panelu StreetScope.</p></section> : <>
       <section className="culture-hero">
-        <img src={hero.image_url||"/images/hero.png"} alt=""/><div className="culture-hero-shade"/>
+        <img src={optimizedImageUrl(hero.image_url||"/images/hero.png",1920)} alt=""/><div className="culture-hero-shade"/>
         <div className="culture-hero-copy"><span>{hero.badge|| (isFashion?"LOOK OF THE WEEK":"FEATURED BUILD")}</span><small>{meta(hero)}</small><h2>{hero.title}</h2><p>{hero.subtitle||hero.description}</p><a href={`/${kind}/${hero.id}`}>ZOBACZ {isFashion?"LOOK":"BUILD"} →</a></div>
       </section>
       <section className="culture-grid-head"><div><i/> <h2>{isFashion?"LOOKBOOK":"BUILDS & SPOTTED"}</h2></div><span>{String(rows.length).padStart(2,"0")} WPISÓW</span></section>
       <section className="culture-grid">
-        {rest.map((row,index)=><a className="culture-card" href={`/${kind}/${row.id}`} key={row.id}><div><img src={row.image_url||"/images/hero.png"} alt=""/><span>{row.badge|| (index%3===0?"RAW":isFashion?"LOOK":"SPOTTED")}</span></div><small>{meta(row)}</small><h3>{row.title}</h3><p>{row.subtitle||row.description||"StreetScope / Los Santos"}</p><b>VIEW →</b></a>)}
+        {rest.map((row,index)=><a className="culture-card" href={`/${kind}/${row.id}`} key={row.id}><div><img src={optimizedImageUrl(row.image_url||"/images/hero.png",750)} alt=""/><span>{row.badge|| (index%3===0?"RAW":isFashion?"LOOK":"SPOTTED")}</span></div><small>{meta(row)}</small><h3>{row.title}</h3><p>{row.subtitle||row.description||"StreetScope / Los Santos"}</p><b>VIEW →</b></a>)}
       </section>
     </>}
     <section className="culture-cross"><div><p>STREET CULTURE</p><h2>{isFashion?"MASZ AUTO, KTÓRE POWINNIŚMY ZOBACZYĆ?":"MASZ FIT, KTÓRY POWINIEN TU TRAFIĆ?"}</h2></div><a href={isFashion?"/motor":"/fashion"}>{isFashion?"PRZEJDŹ DO MOTOR":"PRZEJDŹ DO FASHION"} →</a></section>

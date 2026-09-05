@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "../../../lib/supabase";
+import { optimizedImageUrl } from "../../../lib/image-optimization";
 import "./guide-detail.css";
 
 type GuidePlace = {
@@ -60,7 +61,7 @@ export default function GuideDetailPage({params}:{params:Promise<{id:string}>}){
   return <main className="guide-detail-page">
     {previewMode&&<div style={{position:"sticky",top:0,zIndex:9999,background:"#d71920",color:"#fff",padding:"9px 16px",textAlign:"center",fontWeight:800,fontSize:12,letterSpacing:"1.2px"}}>UKRYTY PODGLĄD REDAKCYJNY · WPIS NIE JEST WIDOCZNY PUBLICZNIE</div>}
     <header className="guide-detail-nav"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><nav><a href={previewMode?`/redakcja/guide?id=${row.id}`:"/guide"}>{previewMode?"← WRÓĆ DO EDYCJI":"← SCOPE GUIDE"}</a><a href="/fashion">FASHION</a><a href="/motor">MOTOR</a></nav></header>
-    <section className="guide-detail-hero" style={row.image_url?{backgroundImage:`url(${row.image_url})`}:undefined}>
+    <section className="guide-detail-hero" style={row.image_url?{backgroundImage:`url(${optimizedImageUrl(row.image_url,1920)})`}:undefined}>
       <div className="guide-detail-shade"/>
       <article><span>{row.featured_label||label}</span><small>{label}{row.neighborhood?` · ${row.neighborhood}`:""}</small><h1>{row.name}</h1><p>{row.short_description||row.description||"Miejsce w Scope Guide."}</p></article>
     </section>
@@ -68,9 +69,9 @@ export default function GuideDetailPage({params}:{params:Promise<{id:string}>}){
       <aside><p>INFORMACJE</p>{row.price_level&&<div><small>CENY</small><b>{row.price_level}</b></div>}{row.hours&&<div><small>GODZINY</small><b>{row.hours}</b></div>}{row.address&&<div><small>LOKALIZACJA</small><b>{row.address}</b></div>}{row.phone&&<div><small>TELEFON</small><b>{row.phone}</b></div>}{row.website_url&&<a href={row.website_url} target="_blank" rel="noreferrer">LINK BIZNESU ↗</a>}</aside>
       <article><p className="guide-detail-kicker">SCOPE GUIDE / {label}</p><h2>{row.name}</h2><p className="guide-detail-description">{row.description||row.short_description||"Brak pełnego opisu tego miejsca."}</p>{row.featured&&<div className="guide-detail-promo"><b>{row.featured_label||"PROMOWANE"}</b><span>Wyróżniony wpis w Scope Guide.</span></div>}</article>
     </section>
-    {gallery.length>0&&<section className="guide-detail-gallery"><div className="guide-detail-gallery-head"><p>GALERIA</p><h2>ZOBACZ<br/><em>MIEJSCE.</em></h2><span>{gallery.length} ZDJĘĆ</span></div><div className="guide-detail-gallery-grid">{gallery.map((url,index)=><button type="button" key={`${url}-${index}`} onClick={()=>setLightbox(url)}><img src={url} alt={`${row.name} — zdjęcie ${index+1}`}/></button>)}</div></section>}
+    {gallery.length>0&&<section className="guide-detail-gallery"><div className="guide-detail-gallery-head"><p>GALERIA</p><h2>ZOBACZ<br/><em>MIEJSCE.</em></h2><span>{gallery.length} ZDJĘĆ</span></div><div className="guide-detail-gallery-grid">{gallery.map((url,index)=><button type="button" key={`${url}-${index}`} onClick={()=>setLightbox(url)}><img src={optimizedImageUrl(url,1080)} alt={`${row.name} — zdjęcie ${index+1}`}/></button>)}</div></section>}
     <section className="guide-detail-more"><div><p>LOS SANTOS</p><h2>SPRAWDŹ WIĘCEJ<br/><em>MIEJSC W MIEŚCIE.</em></h2></div><a href="/guide">WRÓĆ DO SCOPE GUIDE →</a></section>
     <footer className="guide-detail-footer"><a href="/" className="wordmark">STREET<span>SCOPE</span></a><p>SCOPE GUIDE · LOS SANTOS</p><a href="/guide">WSZYSTKIE MIEJSCA →</a></footer>
-    {lightbox&&<div className="guide-detail-lightbox" role="dialog" aria-modal="true" onClick={()=>setLightbox(null)}><button type="button" onClick={()=>setLightbox(null)}>ZAMKNIJ ×</button><img src={lightbox} alt={row.name}/></div>}
+    {lightbox&&<div className="guide-detail-lightbox" role="dialog" aria-modal="true" onClick={()=>setLightbox(null)}><button type="button" onClick={()=>setLightbox(null)}>ZAMKNIJ ×</button><img src={optimizedImageUrl(lightbox,1920)} alt={row.name}/></div>}
   </main>;
 }

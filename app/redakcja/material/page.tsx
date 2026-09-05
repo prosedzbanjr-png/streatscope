@@ -4,6 +4,7 @@ import { ChangeEvent, ClipboardEvent, FormEvent, MouseEvent, useEffect, useMemo,
 import { getSupabase } from "../../../lib/supabase";
 import { logActivity } from "../../../lib/activity-log";
 import { toReaderArticleHtml } from "../../../lib/sanitize-html";
+import { compressImageForUpload } from "../../../lib/image-optimization";
 import "./material.css";
 
 function cleanText(html: string) {
@@ -304,9 +305,9 @@ export default function MaterialPage() {
   function removeMedia() { if (!selectedMedia || !window.confirm("Usunąć to zdjęcie z treści?")) return; selectedMedia.remove(); setSelectedMedia(null); syncBody(); }
   async function upload(file: File) {
     if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) throw new Error("Nieprawidłowy plik");
-    const extension = file.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "jpg";
-    const path = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
-    const { error } = await client().storage.from("article-images").upload(path, file, { contentType: file.type, upsert: false });
+    const optimized = await compressImageForUpload(file);
+    const path = `${Date.now()}-${crypto.randomUUID()}.webp`;
+    const { error } = await client().storage.from("article-images").upload(path, optimized, { contentType: optimized.type, upsert: false });
     if (error) throw error;
     return client().storage.from("article-images").getPublicUrl(path).data.publicUrl;
   }

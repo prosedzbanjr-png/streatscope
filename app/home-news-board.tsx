@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "../lib/supabase";
+import { optimizedImageUrl } from "../lib/image-optimization";
 
 type Story = {
   key?: string;
@@ -99,9 +100,9 @@ export function HomeNewsBoard() {
 
   return <>
     <section className="home-lead">
-      <article className="lead-story"><img src={hero.image_url||"/images/hero.png"} alt=""/><div className="lead-shade"/><div className="lead-copy"><span className="lead-badge">{hero.category||"NAJNOWSZE"}</span><h1>{hero.title}</h1><p>{hero.excerpt||"StreetScope sprawdza, co dzieje się w mieście — bez filtra i bez zbędnego szumu."}</p><div className="lead-meta"><a href={heroHref}>CZYTAJ WIĘCEJ <b>→</b></a><span>{dateLabel(hero.published_at)}</span></div></div></article>
+      <article className="lead-story"><img src={optimizedImageUrl(hero.image_url||"/images/hero.png",1920)} alt=""/><div className="lead-shade"/><div className="lead-copy"><span className="lead-badge">{hero.category||"NAJNOWSZE"}</span><h1>{hero.title}</h1><p>{hero.excerpt||"StreetScope sprawdza, co dzieje się w mieście — bez filtra i bez zbędnego szumu."}</p><div className="lead-meta"><a href={heroHref}>CZYTAJ WIĘCEJ <b>→</b></a><span>{dateLabel(hero.published_at)}</span></div></div></article>
       <aside className="news-brief"><div className="brief-head"><b>REDAKCYJNY SKRÓT</b><span>NAJNOWSZE ZE STREETSCOPE</span></div><div className="brief-list">{quick.map((story,index)=><a href={story.href||"/wiadomosci"} key={`${uniqueKey(story)}-${index}`}><small>{index===0?"TERAZ":`0${index+1}`}</small><strong>{story.title}</strong></a>)}</div><a className="brief-all" href="#stories">NAJNOWSZE MATERIAŁY <b>↓</b></a></aside>
     </section>
-    <section className="latest-board" id="stories"><div className="board-title"><div><i/><h2>NAJNOWSZE</h2></div><a href="/wiadomosci">WIADOMOŚCI →</a></div><div className="latest-grid">{cards.map((story,index)=>{const href=story.href||"/wiadomosci";return <article className="latest-card" key={`${uniqueKey(story)}-${index}`}><a href={href} className="latest-image"><img src={story.image_url||["/images/hq.png","/images/mural.png","/images/hero.png"][index%3]} alt=""/><span>{story.category}</span></a><div className="latest-meta"><span>{dateLabel(story.published_at)}</span><b>•</b><span>STREETSCOPE</span></div><h3><a href={href}>{story.title}</a></h3><p>{story.excerpt||"Najważniejsze informacje, kontekst i relacja z miejsca wydarzeń."}</p><a className="latest-arrow" href={href}>→</a></article>})}</div></section>
+    <section className="latest-board" id="stories"><div className="board-title"><div><i/><h2>NAJNOWSZE</h2></div><a href="/wiadomosci">WIADOMOŚCI →</a></div><div className="latest-grid">{cards.map((story,index)=>{const href=story.href||"/wiadomosci";return <article className="latest-card" key={`${uniqueKey(story)}-${index}`}><a href={href} className="latest-image"><img src={optimizedImageUrl(story.image_url||["/images/hq.png","/images/mural.png","/images/hero.png"][index%3],750)} alt=""/><span>{story.category}</span></a><div className="latest-meta"><span>{dateLabel(story.published_at)}</span><b>•</b><span>STREETSCOPE</span></div><h3><a href={href}>{story.title}</a></h3><p>{story.excerpt||"Najważniejsze informacje, kontekst i relacja z miejsca wydarzeń."}</p><a className="latest-arrow" href={href}>→</a></article>})}</div></section>
   </>;
 }

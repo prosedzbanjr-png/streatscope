@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { getSupabase } from "../../../lib/supabase";
+import { compressImageForUpload } from "../../../lib/image-optimization";
 import "./market-admin.css";
 
 type V = {
@@ -105,13 +106,13 @@ export default function MarketAdmin() {
 
   const upload = async (file: File) => {
     if (!valid(file)) throw new Error(`Zdjęcie ${file.name} musi być obrazem i mieć maks. 8 MB.`);
-    const ext = (file.name.split(".").pop() || "jpg").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "jpg";
-    const path = `market-${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const optimized = await compressImageForUpload(file);
+    const path = `market-${Date.now()}-${crypto.randomUUID()}.webp`;
     const signed = await marketRequest({ action: "sign-upload", path });
     if (!signed.token) throw new Error("Serwer nie przygotował tokenu wysyłania zdjęcia.");
 
-    const { error } = await s().storage.from("article-images").uploadToSignedUrl(path, signed.token, file, {
-      contentType: file.type,
+    const { error } = await s().storage.from("article-images").uploadToSignedUrl(path, signed.token, optimized, {
+      contentType: optimized.type,
       upsert: false,
     });
     if (error) throw new Error(`Nie udało się wysłać zdjęcia ${file.name}: ${error.message}`);
