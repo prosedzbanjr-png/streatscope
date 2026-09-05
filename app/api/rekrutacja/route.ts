@@ -27,7 +27,8 @@ export async function POST(request: Request) {
     const portfolioUrl = safeUrl(form.get("portfolioUrl"));
     const consent = form.get("consent") === "true";
     const cv = form.get("cv");
-    if (firstName.length < 2 || lastName.length < 2 || phone.length < 6 || !email.includes("@") || message.length < 30 || !consent) return jsonError("Uzupełnij wszystkie wymagane pola formularza.", 400, "invalid_submission");
+    if (firstName.length < 2 || lastName.length < 2 || phone.length < 6 || message.length < 30 || !consent) return jsonError("Uzupełnij wszystkie wymagane pola formularza.", 400, "invalid_submission");
+    if (!/^[^@\\s]+@mail\\.eyefind\\.info$/.test(email)) return jsonError("Podaj adres w domenie @mail.eyefind.info.", 400, "invalid_email_domain");
     if (form.get("portfolioUrl") && !portfolioUrl) return jsonError("Link do portfolio musi zaczynać się od http:// lub https://.", 400, "invalid_portfolio");
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
