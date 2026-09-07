@@ -32,13 +32,49 @@ export async function POST(request:Request){
 
     const body=await request.json();
     const slots=body?.slots&&typeof body.slots==="object"?body.slots:{};
+
+    if(body?.mode==="assign"){
+      const sourceType=String(body?.source_type||"");
+      const sourceId=Number(body?.source_id||0);
+      const slot=body?.slot==null||body?.slot===""?null:String(body.slot);
+      if(!allowedTypes.has(sourceType)||!Number.isInteger(sourceId)||sourceId<=0)return jsonError("Nieprawidłowy materiał.",400,"invalid_source");
+      if(slot!==null&&!allowedSlots.has(slot))return jsonError("Nieprawidłowe miejsce na głównej.",400,"invalid_slot");
+
+      if(slot!==null){
+        const save=await fetch(`${url}/rest/v1/homepage_slots?on_conflict=slot`,{
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            apikey:serviceKey,
+            Authorization:`Bearer ${serviceKey}`,
+            Prefer:"resolution=merge-duplicates,return=representation"
+          },
+          body:JSON.stringify({slot,source_type:sourceType,source_id:sourceId,updated_at:new Date().toISOString(),updated_by:email}),
+          cache:"no-store"
+        });
+        const saveBody=await save.text();
+        if(!save.ok)throw new Error(`Homepage placement upsert failed: ${save.status} ${saveBody}`);
+      }
+
+      const keepSlotFilter=slot===null?"":`&slot=neq.${encodeURIComponent(slot)}`;
+      const clearPrevious=await fetch(`${url}/rest/v1/homepage_slots?source_type=eq.${encodeURIComponent(sourceType)}&source_id=eq.${sourceId}${keepSlotFilter}`,{
+        method:"DELETE",
+        headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,Prefer:"return=minimal"},
+        cache:"no-store"
+      });
+      if(!clearPrevious.ok){const clearBody=await clearPrevious.text();throw new Error(`Homepage placement clear failed: ${clearPrevious.status} ${clearBody}`);}
+
+      return Response.json({ok:true,slot});
+    }
+
     const rows:Array<{slot:string;source_type:string;source_id:number;updated_at:string;updated_by:string}>=[];
     const selectedSlots=new Set<string>();
 
     for(const [slot,value] of Object.entries(slots)){
       if(!allowedSlots.has(slot)||!value||typeof value!=="object")continue;
-      const sourceType=String((value as any).source_type||"");
-      const sourceId=Number((value as any).source_id||0);
+      const rawValue=value as Record<string,unknown>;
+      const sourceType=String(rawValue.source_type||"");
+      const sourceId=Number(rawValue.source_id||0);
       if(!allowedTypes.has(sourceType)||!Number.isInteger(sourceId)||sourceId<=0)continue;
       selectedSlots.add(slot);
       rows.push({slot,source_type:sourceType,source_id:sourceId,updated_at:new Date().toISOString(),updated_by:email});
