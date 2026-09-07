@@ -25,7 +25,7 @@ function dateValue(value:string|null|undefined){
 }
 
 function publicationTime(row:Feature){
-  return dateValue(row.reviewed_at)||dateValue(row.updated_at)||dateValue(row.submitted_at)||dateValue(row.created_at);
+  return Math.max(dateValue(row.reviewed_at),dateValue(row.updated_at),dateValue(row.submitted_at),dateValue(row.created_at));
 }
 
 export function CultureHub({ kind }:{ kind:Kind }) {

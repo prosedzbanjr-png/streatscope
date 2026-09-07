@@ -24,9 +24,7 @@ function dateValue(value:string|null|undefined){
 }
 
 function publicationTime(row:GuidePlace){
-  // Guide może powstać wcześniej jako szkic. Przy publikacji/akceptacji ustawiane są
-  // reviewed_at i updated_at, więc to one mają pierwszeństwo przed created_at.
-  return dateValue(row.reviewed_at)||dateValue(row.updated_at)||dateValue(row.submitted_at)||dateValue(row.created_at);
+  return Math.max(dateValue(row.reviewed_at),dateValue(row.updated_at),dateValue(row.submitted_at),dateValue(row.created_at));
 }
 
 export default function GuidePage(){
