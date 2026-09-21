@@ -174,6 +174,34 @@ export function CourierLedger() {
       <p>Zapis lokalny<br/><strong>NA TYM URZĄDZENIU</strong></p>
     </section>
 
+    <section className="character-dossier" aria-labelledby="xie-name">
+      <figure className="dossier-portrait">
+        <img src="/images/xie-kwak-wai.png" alt="Portret Xie Kwak-Wai" />
+        <figcaption>Fotografia ewidencyjna · około 1906 roku</figcaption>
+      </figure>
+      <div className="dossier-copy">
+        <p className="eyebrow">KARTA OSOBOWA NR 01 · SEKRETARZ ORGANIZACJI</p>
+        <h2 id="xie-name">Xie <em>Kwak-Wai</em></h2>
+        <p className="dossier-lead">Urodzony w 1880 roku na południu Chin. W wieku dwudziestu sześciu lat zna wartość informacji lepiej niż wartość rewolweru. Pamięta nazwiska, rachunki i długi, o których inni woleliby zapomnieć.</p>
+        <dl className="dossier-facts">
+          <div><dt>Rocznik</dt><dd>1880</dd></div>
+          <div><dt>Wiek</dt><dd>26 lat</dd></div>
+          <div><dt>Funkcja</dt><dd>Listonosz</dd></div>
+          <div><dt>Znak szczególny</dt><dd>Blizna na prawym policzku</dd></div>
+        </dl>
+      </div>
+      <div className="dossier-history">
+        <p className="eyebrow">WYBRANE ZAPISY Z ŻYCIORYSU</p>
+        <ol>
+          <li><time>1893</time><span>Jako trzynastolatek nosił rachunki i wiadomości pomiędzy magazynami a nabrzeżem. Nauczył się czytać ludzi, zanim dobrze nauczył się czytać dokumenty.</span></li>
+          <li><time>1898</time><span>Opuścił Chiny na statku handlowym. Po wielu tygodniach podróży trafił do Saint Denis, gdzie pracował przy rozładunku i tłumaczył listy rodakom.</span></li>
+          <li><time>1901</time><span>Podczas napadu na przesyłkę odmówił wydania nazwisk adresatów. Została po tym blizna na policzku i zwyczaj zapamiętywania najważniejszych wiadomości zamiast noszenia ich na papierze.</span></li>
+          <li><time>1904</time><span>Zaczął prowadzić księgi składek oraz pośredniczyć pomiędzy kupcami, robotnikami kolejowymi i ludźmi, którzy nie mogli spotkać się osobiście.</span></li>
+          <li><time>1906</time><span>Przyjął funkcję Listonosza. Odpowiada za zapiski, miejsce zebrań i to, by właściwa wiadomość dotarła do właściwego człowieka — ani słowo dalej.</span></li>
+        </ol>
+      </div>
+    </section>
+
     <section className="ledger-workspace">
       <form className="ledger-form" onSubmit={submit}>
         <div className="ledger-section-title">
