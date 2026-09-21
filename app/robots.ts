@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
-      { userAgent: "*", allow: ["/", "/wiadomosci", "/miasto", "/o-redakcji", "/artykul/"], disallow: ["/redakcja/", "/api/"] },
+      { userAgent: "*", allow: ["/", "/wiadomosci", "/miasto", "/o-redakcji", "/artykul/"], disallow: ["/redakcja/", "/telegraf-1906/", "/api/"] },
     ],
     sitemap: "https://streatscope.vercel.app/sitemap.xml",
   };

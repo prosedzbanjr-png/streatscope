@@ -31,6 +31,11 @@ const nextConfig: NextConfig = {
       { source: "/market", headers: noCacheHeaders },
       { source: "/market/:path*", headers: noCacheHeaders },
       { source: "/licytacje", headers: noCacheHeaders },
+      { source: "/telegraf-1906/:path*", headers: [
+        ...noCacheHeaders,
+        { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+      ] },
     ];
   },
 };
