@@ -202,6 +202,54 @@ export function CourierLedger() {
       </div>
     </section>
 
+    <section className="gravediggers-archive" aria-labelledby="gravediggers-title">
+      <header className="archive-heading">
+        <div>
+          <p className="eyebrow">AKTA ORGANIZACJI · VAN HORN · 1906</p>
+          <h2 id="gravediggers-title">Początek <em>Grabarzy</em></h2>
+        </div>
+        <span className="archive-mark" aria-hidden="true">VI</span>
+      </header>
+
+      <div className="origin-record">
+        <p className="record-number">AKTA 00</p>
+        <div>
+          <h3>Pierwszy grób</h3>
+          <p>Wszystko zaczęło się na zamglonych obrzeżach Van Horn. Trzech mężczyzn bez grosza przy duszy nocami rozkopywało świeże mogiły, szukając biżuterii, zegarków i wszystkiego, co dało się sprzedać.</p>
+          <p>Podczas jednej z takich nocy nakrył ich szeryf Thomas Vance. W szamotaninie został ogłuszony, wrzucony na dno otwartego grobu i zasypany żywcem obok starego trupa. Gdy odnaleziono ciało, po saloonach rozeszła się nazwa <strong>„Grabarze”</strong>. Założyciele przyjęli ją bez sprzeciwu, a jaskinie poza miastem uczynili kryjówką i miejscem sądu.</p>
+        </div>
+      </div>
+
+      <div className="six-files">
+        <article><b>01</b><span>PIERWSZY ZAKOPANY</span><h3>Thomas Vance</h3><p>Szeryf, od którego zaczęła się legenda. Jego grób stał się pierwszą przestrogą gangu.</p></article>
+        <article><b>02</b><span>ZOSTAWIONY NA BAGNACH</span><h3>Złodziej</h3><p>Zakopany po szyję na bagnach Saint Denis i pozostawiony owadom zwabionym zapachem krwi.</p></article>
+        <article><b>03</b><span>TRUMNA BEZ WYJŚCIA</span><h3>Zdrajca</h3><p>Zamknięty w trumnie wraz z jadowitymi wężami i pogrzebany głęboko pod jaskinią.</p></article>
+        <article><b>04</b><span>PŁYTKI GRÓB</span><h3>Samowolka</h3><p>Przez trzy dni oddychał przez rurkę pod stajnią, słysząc życie gangu. Potem dopływ powietrza zasypano.</p></article>
+        <article><b>05</b><span>UTOPIONY W PIACHU</span><h3>Konfident</h3><p>Za oddanie ludzi w ręce prawa został zakopany pionowo, głową w dół, przy brzegu rzeki.</p></article>
+        <article><b>06</b><span>ZASYPANY ZŁOTEM</span><h3>Chciwiec</h3><p>Dłużnik wykopał własny grób. Monety, których nie oddał gangowi, stały się częścią jego wyroku.</p></article>
+      </div>
+
+      <div className="oath-record">
+        <div className="oath-copy">
+          <p className="eyebrow">PRZYSIĘGA ZIEMI I ŁOPATY</p>
+          <blockquote>
+            <p>„Z ziemi powstałem i dla tej ziemi będę kopać.”</p>
+            <ul>
+              <li>Moje usta będą zaryglowane mocniej niż wieko trumny.</li>
+              <li>Moja lojalność będzie głęboka na sześć stóp.</li>
+              <li>Moja łopata nie spocznie, dopóki nasi wrogowie nie zgniją w ziemi.</li>
+            </ul>
+            <p className="oath-ending">Jeśli zdradzę, niech bracia oddadzą mnie ziemi. Od teraz jestem Grabarzem.</p>
+          </blockquote>
+        </div>
+        <aside className="buckle-record">
+          <div className="six-skulls" aria-label="Sześć czaszek">☠ ☠ ☠<br/>☠ ☠ ☠</div>
+          <p className="eyebrow">KLAMRA SZEŚCIU CZASZEK</p>
+          <p>Otrzymuje ją Szabrownik, który przeżył okres próbny. Każda czaszka oznacza jedną z sześciu kar i przypomina, że złamanie zasad zawsze kończy się pod ziemią.</p>
+        </aside>
+      </div>
+    </section>
+
     <section className="ledger-workspace">
       <form className="ledger-form" onSubmit={submit}>
         <div className="ledger-section-title">
