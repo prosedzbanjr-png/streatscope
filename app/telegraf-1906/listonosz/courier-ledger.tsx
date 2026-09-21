@@ -176,7 +176,7 @@ export function CourierLedger() {
 
     <section className="character-dossier" aria-labelledby="xie-name">
       <figure className="dossier-portrait">
-        <img src="/images/xie-kwak-wai.png" alt="Portret Xie Kwak-Wai" />
+        <img src="/images/xie-kwak-wai.jpg" alt="Portret Xie Kwak-Wai" />
         <figcaption>Fotografia ewidencyjna · około 1906 roku</figcaption>
       </figure>
       <div className="dossier-copy">
