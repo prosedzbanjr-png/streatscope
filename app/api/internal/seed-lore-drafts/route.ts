@@ -63,7 +63,7 @@ export async function GET(request: Request) {
       social_image: null,
       status: "draft",
       review_status: "draft",
-      author_email: null,
+      author_email: "streetscope@mail.eyefind.info",
       author_name: "StreetScope",
       author_role: "DZIENNIKARZ",
       scheduled_for: null,
