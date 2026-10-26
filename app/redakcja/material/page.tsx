@@ -35,21 +35,28 @@ function turnFreeTextIntoInputs(root: HTMLElement) {
     if (field.parentElement?.classList.contains("text-block")) {
       if (!field.parentElement.querySelector("[data-text-handle]")) {
         const handle = document.createElement("button");
-        handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true"; handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe";
+        handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true";
+        handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe";
+        handle.setAttribute("aria-label", "Złap i przesuń pole tekstowe");
         field.parentElement.prepend(handle);
       }
       return;
     }
+    // Wrap legacy fields in the canvas so existing text can be dragged too.
+    const parent = field.parentElement;
+    if (!parent) return;
     const block = document.createElement("div");
     block.className = "text-block";
     block.style.cssText = field.style.cssText;
-    field.style.cssText = "";
     const handle = document.createElement("button");
-    handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true"; handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe";
+    handle.type = "button"; handle.className = "text-handle"; handle.dataset.textHandle = "true";
+    handle.textContent = "⠿"; handle.title = "Złap i przesuń pole tekstowe";
+    handle.setAttribute("aria-label", "Złap i przesuń pole tekstowe");
+    parent.replaceChild(block, field);
     block.append(handle, field);
+    field.style.cssText = "";
   });
 }
-
 function normalizeEditorBlockText(block: HTMLElement) {
   const field = block.querySelector<HTMLElement>(".free-text");
   return (field?.textContent || "")
@@ -304,7 +311,43 @@ export default function MaterialPage() {
   function dragOver(event: React.DragEvent<HTMLDivElement>) { event.preventDefault(); }
   function dropMedia(event: React.DragEvent<HTMLDivElement>) { event.preventDefault(); }
   function moveAt(x: number, y: number) { const root = canvas.current; const dragged = draggedMedia.current; if (!root || !dragged) return; root.querySelectorAll(".drop-before,.drop-after").forEach(node => node.classList.remove("drop-before", "drop-after")); const destination = blockAtPoint(x, y); if (destination && destination !== dragged) { const box = destination.getBoundingClientRect(); destination.classList.add(y < box.top + box.height / 2 ? "drop-before" : "drop-after"); return; } const rootBox = root.getBoundingClientRect(); root.classList.add("free-drop-active"); root.style.setProperty("--drop-x", `${Math.max(0, Math.min(rootBox.width - 34, x - rootBox.left))}px`); root.style.setProperty("--drop-y", `${Math.max(0, y - rootBox.top)}px`); }
-  function startPointerMove(event: React.PointerEvent<HTMLDivElement>) { const target = event.target as HTMLElement; const textHandle = target.closest("[data-text-handle]") as HTMLElement | null; if (textHandle) { const block = textHandle.closest(".text-block") as HTMLElement | null; const root = canvas.current; if (!block || !root) return; event.preventDefault(); event.stopPropagation(); const startX = event.clientX; const startY = event.clientY; const originalLeft = Number.parseFloat(block.style.left || "0"); const originalTop = Number.parseFloat(block.style.top || "0"); const moveText = (pointer: PointerEvent) => { const bounds = root.getBoundingClientRect(); const maxLeft = Math.max(0, bounds.width - block.offsetWidth); block.style.left = `${Math.max(0, Math.min(maxLeft, originalLeft + pointer.clientX - startX))}px`; block.style.top = `${Math.max(0, originalTop + pointer.clientY - startY)}px`; fitCanvasPages(); }; const endText = () => { syncBody(); window.removeEventListener("pointermove", moveText); }; window.addEventListener("pointermove", moveText); window.addEventListener("pointerup", endText, { once: true }); return; } if (!target.closest("[data-media-handle]")) return; const media = target.closest("figure.inline-media") as HTMLElement | null; if (!media) return; event.preventDefault(); event.stopPropagation(); draggedMedia.current = media; media.classList.add("is-dragging"); const move = (pointer: PointerEvent) => moveAt(pointer.clientX, pointer.clientY); const end = (pointer: PointerEvent) => { const root = canvas.current; const dragged = draggedMedia.current; if (root && dragged) { const destination = blockAtPoint(pointer.clientX, pointer.clientY); if (destination && destination !== dragged) { const box = destination.getBoundingClientRect(); root.insertBefore(dragged, pointer.clientY < box.top + box.height / 2 ? destination : destination.nextSibling); dragged.style.removeProperty("margin-top"); dragged.style.removeProperty("margin-left"); } else { const rootBox = root.getBoundingClientRect(); const currentBox = dragged.getBoundingClientRect(); const maxLeft = Math.max(0, rootBox.width - currentBox.width - 24); const left = Math.max(0, Math.min(maxLeft, pointer.clientX - rootBox.left - currentBox.width / 2)); const targetTop = Math.max(0, pointer.clientY - rootBox.top - 22); const ownTop = Math.max(0, currentBox.top - rootBox.top); const extraTop = Math.max(0, targetTop - ownTop); dragged.style.marginLeft = `${Math.round(left)}px`; dragged.style.marginTop = `${Math.round(28 + extraTop)}px`; dragged.style.marginRight = "0"; dragged.dataset.layout = "free"; } root.classList.remove("free-drop-active"); root.style.removeProperty("--drop-x"); root.style.removeProperty("--drop-y"); fitCanvasPages(); bodyRef.current = serializeCanvas(root); setSelectedMedia(dragged); } dragEnd(); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); }; pointerMove.current = move; window.addEventListener("pointermove", move); window.addEventListener("pointerup", end, { once: true }); }
+  function startPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    const textHandle = target.closest("[data-text-handle]") as HTMLElement | null;
+    if (textHandle) {
+      const block = textHandle.closest(".text-block") as HTMLElement | null;
+      const root = canvas.current;
+      if (!block || !root) return;
+      event.preventDefault(); event.stopPropagation();
+      const pointerId = event.pointerId;
+      const startX = event.clientX; const startY = event.clientY;
+      const originalLeft = Number.parseFloat(block.style.left || "0");
+      const originalTop = Number.parseFloat(block.style.top || "0");
+      block.style.zIndex = "40";
+      const moveText = (pointer: PointerEvent) => {
+        if (pointer.pointerId !== pointerId) return;
+        pointer.preventDefault();
+        const bounds = root.getBoundingClientRect();
+        const maxLeft = Math.max(0, bounds.width - block.offsetWidth);
+        const nextLeft = Math.max(0, Math.min(maxLeft, originalLeft + pointer.clientX - startX));
+        const nextTop = Math.max(0, originalTop + pointer.clientY - startY);
+        block.style.left = nextLeft + "px"; block.style.top = nextTop + "px";
+        fitCanvasPages();
+      };
+      const endText = (pointer: PointerEvent) => {
+        if (pointer.pointerId !== pointerId) return;
+        block.style.zIndex = "12";
+        window.removeEventListener("pointermove", moveText);
+        window.removeEventListener("pointerup", endText);
+        window.removeEventListener("pointercancel", endText);
+        syncBody();
+      };
+      window.addEventListener("pointermove", moveText, { passive: false });
+      window.addEventListener("pointerup", endText);
+      window.addEventListener("pointercancel", endText);
+      return;
+    }
+    if (!target.closest("[data-media-handle]")) return; const media = target.closest("figure.inline-media") as HTMLElement | null; if (!media) return; event.preventDefault(); event.stopPropagation(); draggedMedia.current = media; media.classList.add("is-dragging"); const move = (pointer: PointerEvent) => moveAt(pointer.clientX, pointer.clientY); const end = (pointer: PointerEvent) => { const root = canvas.current; const dragged = draggedMedia.current; if (root && dragged) { const destination = blockAtPoint(pointer.clientX, pointer.clientY); if (destination && destination !== dragged) { const box = destination.getBoundingClientRect(); root.insertBefore(dragged, pointer.clientY < box.top + box.height / 2 ? destination : destination.nextSibling); dragged.style.removeProperty("margin-top"); dragged.style.removeProperty("margin-left"); } else { const rootBox = root.getBoundingClientRect(); const currentBox = dragged.getBoundingClientRect(); const maxLeft = Math.max(0, rootBox.width - currentBox.width - 24); const left = Math.max(0, Math.min(maxLeft, pointer.clientX - rootBox.left - currentBox.width / 2)); const targetTop = Math.max(0, pointer.clientY - rootBox.top - 22); const ownTop = Math.max(0, currentBox.top - rootBox.top); const extraTop = Math.max(0, targetTop - ownTop); dragged.style.marginLeft = `${Math.round(left)}px`; dragged.style.marginTop = `${Math.round(28 + extraTop)}px`; dragged.style.marginRight = "0"; dragged.dataset.layout = "free"; } root.classList.remove("free-drop-active"); root.style.removeProperty("--drop-x"); root.style.removeProperty("--drop-y"); fitCanvasPages(); bodyRef.current = serializeCanvas(root); setSelectedMedia(dragged); } dragEnd(); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); }; pointerMove.current = move; window.addEventListener("pointermove", move); window.addEventListener("pointerup", end, { once: true }); }
   function updateMedia(layout: "wide" | "left" | "right" | "small") {
     if (!selectedMedia) return;
     selectedMedia.dataset.layout = layout;
